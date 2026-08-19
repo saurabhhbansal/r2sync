@@ -5,7 +5,7 @@ import sys
 from typing import Optional
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QFont, QIcon
+from PySide6.QtGui import QCloseEvent, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QDialog,
@@ -27,6 +27,7 @@ from r2sync.core.db import Database
 from r2sync.core.models import BackupJob, SyncDataset
 from r2sync.gui.styles.theme import apply_theme
 from r2sync.gui.tray import SystemTrayManager
+from r2sync.utils.paths import get_asset_path
 from r2sync.gui.views.add_sync_dialog import AddSyncDialog
 from r2sync.gui.views.conflict_dialog import ConflictCenterDialog
 from r2sync.gui.views.dashboard_view import DashboardView
@@ -55,6 +56,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_DISPLAY_NAME} - Cloudflare R2 Backup")
         self.resize(1000, 680)
         self.setMinimumSize(850, 550)
+
+        icon_path = get_asset_path("icon.png")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self._init_ui()
         self._setup_tray()
@@ -87,8 +92,14 @@ class MainWindow(QMainWindow):
 
         # App Brand
         brand_row = QHBoxLayout()
-        brand_logo = QLabel("🛡️")
-        brand_logo.setStyleSheet("font-size: 22px;")
+        brand_logo = QLabel()
+        icon_path = get_asset_path("icon.png")
+        if icon_path.exists():
+            pix = QPixmap(str(icon_path)).scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            brand_logo.setPixmap(pix)
+        else:
+            brand_logo.setText("🛡️")
+            brand_logo.setStyleSheet("font-size: 22px;")
         brand_title = QLabel(APP_DISPLAY_NAME)
         brand_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #FFFFFF;")
         brand_ver = QLabel(f"v{APP_VERSION}")
@@ -170,7 +181,11 @@ class MainWindow(QMainWindow):
                 border: none;
             }
         """)
-        btn.clicked.connect(lambda: self.stack.setCurrentIndex(view_index))
+        def on_nav_clicked():
+            self.stack.setCurrentIndex(view_index)
+            if view_index == 4:
+                self._refresh_storage()
+        btn.clicked.connect(on_nav_clicked)
         self.nav_group.addButton(btn, view_index)
         return btn
 
@@ -227,7 +242,7 @@ class MainWindow(QMainWindow):
 
         # Settings signals
         self.view_settings.theme_changed.connect(lambda t: apply_theme(self, t))
-        self.view_settings.credentials_saved.connect(self.refresh_all_data)
+        self.view_settings.credentials_saved.connect(self._on_credentials_saved)
         self.view_settings.device_name_saved.connect(self._on_device_name_saved)
         self.view_settings.download_rclone_requested.connect(self._on_download_rclone)
         self.view_settings.test_connection_requested.connect(self._on_test_connection)
@@ -239,8 +254,12 @@ class MainWindow(QMainWindow):
     def _launch_setup_wizard(self):
         wizard = SetupWizard(self.db, self)
         if wizard.exec() == QDialog.Accepted:
-            self.refresh_all_data()
+            self._on_credentials_saved()
             self.btn_nav_dashboard.click()
+
+    def _on_credentials_saved(self):
+        self.refresh_all_data()
+        self._refresh_storage()
 
     def refresh_all_data(self):
         try:
@@ -268,19 +287,36 @@ class MainWindow(QMainWindow):
             self.view_settings.set_device_identity(dev_id, dev_name)
 
             creds = get_r2_credentials()
-            if creds:
+            if creds and creds.account_id:
                 self.view_storage.set_account_id(creds.account_id)
+            else:
+                self.view_storage.set_account_id("")
 
-            # Background service check
+            # Background service & rclone engine check
             is_svc_running = self.ipc.is_service_running()
             if is_svc_running:
                 self.svc_badge.setText("● Service Online")
                 self.svc_badge.setStyleSheet("color: #10B981; font-size: 12px;")
                 self.view_settings.set_service_status(True)
+                try:
+                    r_status = self.ipc.get_rclone_status()
+                    self.view_settings.set_rclone_status(
+                        r_status.get("installed", False),
+                        r_status.get("version", "Unknown")
+                    )
+                except Exception:
+                    pass
             else:
                 self.svc_badge.setText("● Standalone Mode")
                 self.svc_badge.setStyleSheet("color: #F59E0B; font-size: 12px;")
                 self.view_settings.set_service_status(False)
+                try:
+                    from r2sync.core.rclone_engine import RcloneBinaryManager
+                    installed = RcloneBinaryManager.is_installed()
+                    ver = RcloneBinaryManager.get_version() if installed else "Not installed"
+                    self.view_settings.set_rclone_status(installed, ver)
+                except Exception:
+                    pass
 
             self._refresh_history()
 
@@ -304,7 +340,22 @@ class MainWindow(QMainWindow):
 
     def _refresh_storage(self):
         try:
-            buckets = self.ipc.list_buckets() if self.ipc.is_service_running() else []
+            creds = get_r2_credentials()
+            if not creds or not creds.account_id:
+                self.view_storage.set_account_id("")
+                self.view_storage.set_buckets([])
+                return
+
+            self.view_storage.set_account_id(creds.account_id)
+
+            if self.ipc.is_service_running():
+                buckets = self.ipc.list_buckets() or []
+            else:
+                from r2sync.core.r2_client import CloudflareR2Client
+                cf = CloudflareR2Client()
+                bucket_objs = cf.list_buckets(creds)
+                buckets = [b.to_dict() for b in bucket_objs]
+
             self.view_storage.set_buckets(buckets)
         except Exception as e:
             logger.debug(f"Refresh storage error: {e}")
@@ -318,8 +369,30 @@ class MainWindow(QMainWindow):
         self.tray.set_syncing(False)
         self.refresh_all_data()
 
+    def _get_available_buckets(self) -> list:
+        try:
+            if self.ipc.is_service_running():
+                buckets_data = self.ipc.list_buckets() or []
+                names = [b.get("name") for b in buckets_data if b.get("name")]
+                if names:
+                    return names
+            else:
+                from r2sync.core.credentials import get_r2_credentials
+                from r2sync.core.r2_client import CloudflareR2Client
+                creds = get_r2_credentials()
+                if creds and creds.account_id:
+                    cf = CloudflareR2Client()
+                    bucket_objs = cf.list_buckets(creds)
+                    names = [b.name for b in bucket_objs if b.name]
+                    if names:
+                        return names
+        except Exception as e:
+            logger.debug(f"Error fetching buckets for dialog: {e}")
+        return ["r2sync-backups"]
+
     def _open_new_job_dialog(self):
-        dlg = JobEditDialog(parent=self)
+        buckets = self._get_available_buckets()
+        dlg = JobEditDialog(buckets=buckets, parent=self)
         if dlg.exec() == QDialog.Accepted and dlg.job:
             self.db.create_job(dlg.job)
             self.refresh_all_data()
@@ -328,7 +401,8 @@ class MainWindow(QMainWindow):
         job = self.db.get_job(job_id)
         if not job:
             return
-        dlg = JobEditDialog(job=job, parent=self)
+        buckets = self._get_available_buckets()
+        dlg = JobEditDialog(job=job, buckets=buckets, parent=self)
         if dlg.exec() == QDialog.Accepted and dlg.job:
             self.db.update_job(dlg.job)
             self.refresh_all_data()
@@ -416,7 +490,20 @@ class MainWindow(QMainWindow):
 
             if res.get("success"):
                 lat = res.get("latency_ms", 0)
-                QMessageBox.information(self, "Connection Successful", f"Successfully connected to Cloudflare R2 ({lat}ms)!")
+                buckets = res.get("buckets", [])
+                b_info = f" Discovered {len(buckets)} bucket(s)." if buckets else ""
+                ans = QMessageBox.question(
+                    self,
+                    "Connection Successful",
+                    f"Successfully connected to Cloudflare R2 ({lat}ms)!{b_info}\n\n"
+                    "Would you like to save these credentials now?",
+                    QMessageBox.Yes | QMessageBox.No,
+                )
+                if ans == QMessageBox.Yes:
+                    from r2sync.core.credentials import save_r2_credentials
+                    save_r2_credentials(acc, ak, sk)
+                    self.view_settings._load_current_values()
+                    self._on_credentials_saved()
             else:
                 err = res.get("error") or res.get("message") or "Unknown error"
                 QMessageBox.warning(self, "Connection Failed", f"Failed to connect to Cloudflare R2:\n\n{err}")
@@ -433,10 +520,7 @@ class MainWindow(QMainWindow):
         self.refresh_all_data()
 
     def _open_add_sync_dialog(self):
-        try:
-            buckets = [b.get("name") for b in self.ipc.list_buckets()] if self.ipc.is_service_running() else ["r2sync-backups"]
-        except Exception:
-            buckets = ["r2sync-backups"]
+        buckets = self._get_available_buckets()
 
         def overlap_checker(path: str):
             if self.ipc.is_service_running():

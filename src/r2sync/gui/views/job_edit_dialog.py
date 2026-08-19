@@ -70,11 +70,19 @@ class JobEditDialog(QDialog):
         form.addRow("Source Folder:", folder_row)
 
         # 3. Target Bucket & Prefix
+        bucket_row = QHBoxLayout()
         self.bucket_combo = QComboBox()
-        self.bucket_combo.setEditable(True)
+        self.bucket_combo.setEditable(False)
         for b in self.buckets:
             self.bucket_combo.addItem(b)
-        form.addRow("Target R2 Bucket:", self.bucket_combo)
+
+        new_bucket_btn = QPushButton("➕ New Bucket")
+        new_bucket_btn.setObjectName("secondaryBtn")
+        new_bucket_btn.clicked.connect(self._create_new_bucket)
+
+        bucket_row.addWidget(self.bucket_combo, stretch=1)
+        bucket_row.addWidget(new_bucket_btn)
+        form.addRow("Target R2 Bucket:", bucket_row)
 
         self.prefix_input = QLineEdit()
         self.prefix_input.setPlaceholderText("Optional subfolder path in bucket (e.g. Documents)")
@@ -172,10 +180,23 @@ class JobEditDialog(QDialog):
         self.time_row.setEnabled(index in (0, 2))
         self.interval_row.setEnabled(index == 1)
 
+    def _create_new_bucket(self):
+        from r2sync.gui.views.storage_view import CreateBucketDialog
+        dlg = CreateBucketDialog(self)
+        if dlg.exec() == QDialog.Accepted and hasattr(dlg, "bucket_name"):
+            name = dlg.bucket_name
+            idx = self.bucket_combo.findText(name)
+            if idx == -1:
+                self.bucket_combo.addItem(name)
+            self.bucket_combo.setCurrentText(name)
+
     def _load_job_data(self, job: BackupJob):
         self.name_input.setText(job.name)
         self.source_input.setText(job.source_path)
-        self.bucket_combo.setCurrentText(job.bucket_name)
+        if job.bucket_name:
+            if self.bucket_combo.findText(job.bucket_name) == -1:
+                self.bucket_combo.addItem(job.bucket_name)
+            self.bucket_combo.setCurrentText(job.bucket_name)
         self.prefix_input.setText(job.remote_prefix)
 
         if job.schedule_type == JobScheduleType.INTERVAL.value:

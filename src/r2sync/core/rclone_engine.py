@@ -455,7 +455,16 @@ class RcloneEngine:
         try:
             flags = 0x08000000 if sys.platform == "win32" else 0
             res = subprocess.run(
-                [str(exe_path), "lsd", "r2:", "--fast-list"],
+                [
+                    str(exe_path),
+                    "lsd",
+                    "r2:",
+                    "--fast-list",
+                    "--retries", "1",
+                    "--low-level-retries", "1",
+                    "--contimeout", "8s",
+                    "--timeout", "8s",
+                ],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -478,6 +487,10 @@ class RcloneEngine:
                 }
             else:
                 err_msg = res.stderr.strip() or res.stdout.strip()
+                if "403" in err_msg or "AccessDenied" in err_msg or "Forbidden" in err_msg:
+                    err_msg += "\n\nHint: Cloudflare R2 API Token requires 'Admin Read & Write' permission and 'Apply to all buckets' to list buckets."
+                elif "401" in err_msg or "InvalidAccessKeyId" in err_msg or "SignatureDoesNotMatch" in err_msg:
+                    err_msg += "\n\nHint: Check Access Key ID and Secret Access Key. Note: Cloudflare User Bearer tokens or Global API keys cannot be used for S3 authentication."
                 return {
                     "success": False,
                     "buckets": [],

@@ -84,6 +84,9 @@ class SettingsView(QWidget):
         self.access_key_input.setPlaceholderText("Access Key ID")
         creds_layout.addRow("Access Key ID:", self.access_key_input)
 
+        self.account_status_label = QLabel("<font color='#94A3B8'>● Not Configured</font>")
+        creds_layout.addRow("Connection Status:", self.account_status_label)
+
         secret_row = QHBoxLayout()
         self.secret_key_input = QLineEdit()
         self.secret_key_input.setEchoMode(QLineEdit.Password)
@@ -121,9 +124,13 @@ class SettingsView(QWidget):
         self.rclone_status_label = QLabel("Detecting...")
         rclone_row = QHBoxLayout()
         rclone_row.addWidget(self.rclone_status_label)
-        self.download_rclone_btn = QPushButton("⬇ Download / Re-install Rclone")
+        self.redetect_rclone_btn = QPushButton("🔄 Re-detect")
+        self.redetect_rclone_btn.setObjectName("secondaryBtn")
+        self.redetect_rclone_btn.clicked.connect(self._check_rclone)
+        self.download_rclone_btn = QPushButton("⬇ Download / Re-install")
         self.download_rclone_btn.setObjectName("secondaryBtn")
         self.download_rclone_btn.clicked.connect(self.download_rclone_requested.emit)
+        rclone_row.addWidget(self.redetect_rclone_btn)
         rclone_row.addWidget(self.download_rclone_btn)
         rclone_row.addStretch()
         svc_layout.addRow("Rclone Engine:", rclone_row)
@@ -134,10 +141,6 @@ class SettingsView(QWidget):
         dev_group = QGroupBox("Computer & Device Identity")
         dev_layout = QFormLayout(dev_group)
         dev_layout.setSpacing(10)
-
-        self.device_id_lbl = QLabel("—")
-        self.device_id_lbl.setStyleSheet("color: #94A3B8; font-family: monospace; font-size: 11px;")
-        dev_layout.addRow("Device UUID:", self.device_id_lbl)
 
         dev_row = QHBoxLayout()
         self.device_name_input = QLineEdit()
@@ -194,10 +197,24 @@ class SettingsView(QWidget):
 
     def _load_current_values(self):
         creds = get_r2_credentials()
-        if creds:
+        if creds and creds.account_id:
             self.account_id_input.setText(creds.account_id)
             self.access_key_input.setText(creds.access_key_id)
             self.secret_key_input.setText(creds.secret_access_key)
+            masked = f"{creds.account_id[:6]}••••••••{creds.account_id[-4:]}" if len(creds.account_id) > 10 else creds.account_id
+            self.account_status_label.setText(f"<font color='#10B981'>● Connected ({masked})</font>")
+        else:
+            self.account_status_label.setText("<font color='#94A3B8'>● Not Configured</font>")
+        self._check_rclone()
+
+    def _check_rclone(self):
+        try:
+            from r2sync.core.rclone_engine import RcloneBinaryManager
+            installed = RcloneBinaryManager.is_installed()
+            ver = RcloneBinaryManager.get_version() if installed else "Not installed"
+            self.set_rclone_status(installed, ver)
+        except Exception as e:
+            self.set_rclone_status(False, f"Error: {e}")
 
     def _toggle_secret_visibility(self):
         if self.secret_key_input.echoMode() == QLineEdit.Password:
@@ -216,7 +233,13 @@ class SettingsView(QWidget):
             QMessageBox.warning(self, "Validation Error", "Please fill in all Cloudflare credentials.")
             return
 
+        # Sanitize account_id
+        acc = acc.replace("https://", "").replace("http://", "").rstrip("/")
+        if ".r2.cloudflarestorage.com" in acc:
+            acc = acc.replace(".r2.cloudflarestorage.com", "")
+
         save_r2_credentials(acc, ak, sk)
+        self._load_current_values()
         QMessageBox.information(self, "Credentials Saved", "Cloudflare R2 credentials have been securely stored.")
         self.credentials_saved.emit()
 
@@ -235,7 +258,7 @@ class SettingsView(QWidget):
         self.theme_changed.emit(theme_name)
 
     def set_device_identity(self, device_id: str, device_name: str):
-        self.device_id_lbl.setText(device_id or "—")
+        self.device_id = device_id
         self.device_name_input.setText(device_name or "")
 
     def _save_device_name(self):

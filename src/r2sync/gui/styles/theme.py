@@ -1,15 +1,32 @@
 """Modern Dark and Light stylesheets for r2sync."""
 
 DARK_THEME_QSS = """
-QMainWindow, QDialog, QWidget {
-    background-color: #12161F;
+QWidget {
     color: #E2E8F0;
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
     font-size: 13px;
 }
 
+QMainWindow, QDialog, QStackedWidget {
+    background-color: #12161F;
+}
+
+QLabel {
+    background-color: transparent;
+    color: #E2E8F0;
+}
+
 QSplitter::handle {
     background-color: #1E293B;
+}
+
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
 }
 
 QScrollBar:vertical {
@@ -161,7 +178,8 @@ QProgressBar::chunk {
     border-radius: 5px;
 }
 
-QCheckBox {
+QCheckBox, QRadioButton {
+    background-color: transparent;
     color: #E2E8F0;
     spacing: 8px;
 }
@@ -178,6 +196,7 @@ QCheckBox::indicator:checked {
 }
 
 QGroupBox {
+    background-color: transparent;
     border: 1px solid #1E293B;
     border-radius: 8px;
     margin-top: 16px;
@@ -186,6 +205,7 @@ QGroupBox {
     color: #94A3B8;
 }
 QGroupBox::title {
+    background-color: transparent;
     subcontrol-origin: margin;
     subcontrol-position: top left;
     padding: 0 8px;
@@ -206,23 +226,27 @@ QFrame#sidebarWidget {
 }
 
 QLabel#titleLabel {
+    background-color: transparent;
     font-size: 20px;
     font-weight: bold;
     color: #FFFFFF;
 }
 
 QLabel#subtitleLabel {
+    background-color: transparent;
     font-size: 13px;
     color: #94A3B8;
 }
 
 QLabel#statValueLabel {
+    background-color: transparent;
     font-size: 24px;
     font-weight: bold;
     color: #38BDF8;
 }
 
 QLabel#statTitleLabel {
+    background-color: transparent;
     font-size: 12px;
     font-weight: 600;
     color: #94A3B8;
@@ -231,15 +255,32 @@ QLabel#statTitleLabel {
 """
 
 LIGHT_THEME_QSS = """
-QMainWindow, QDialog, QWidget {
-    background-color: #F8FAFC;
+QWidget {
     color: #1E293B;
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
     font-size: 13px;
 }
 
+QMainWindow, QDialog, QStackedWidget {
+    background-color: #F8FAFC;
+}
+
+QLabel {
+    background-color: transparent;
+    color: #1E293B;
+}
+
 QSplitter::handle {
     background-color: #E2E8F0;
+}
+
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
 }
 
 QScrollBar:vertical {
@@ -342,6 +383,29 @@ QProgressBar::chunk {
     border-radius: 5px;
 }
 
+QCheckBox, QRadioButton {
+    background-color: transparent;
+    color: #1E293B;
+    spacing: 8px;
+}
+
+QGroupBox {
+    background-color: transparent;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    margin-top: 16px;
+    padding-top: 18px;
+    font-weight: bold;
+    color: #64748B;
+}
+QGroupBox::title {
+    background-color: transparent;
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+    color: #2563EB;
+}
+
 QFrame#cardWidget {
     background-color: #FFFFFF;
     border: 1px solid #E2E8F0;
@@ -355,23 +419,27 @@ QFrame#sidebarWidget {
 }
 
 QLabel#titleLabel {
+    background-color: transparent;
     font-size: 20px;
     font-weight: bold;
     color: #0F172A;
 }
 
 QLabel#subtitleLabel {
+    background-color: transparent;
     font-size: 13px;
     color: #64748B;
 }
 
 QLabel#statValueLabel {
+    background-color: transparent;
     font-size: 24px;
     font-weight: bold;
     color: #2563EB;
 }
 
 QLabel#statTitleLabel {
+    background-color: transparent;
     font-size: 12px;
     font-weight: 600;
     color: #64748B;

@@ -100,11 +100,19 @@ class AddSyncDialog(QDialog):
         form.addRow("", self.overlap_warn_lbl)
 
         # 3. Target Bucket
+        bucket_row = QHBoxLayout()
         self.bucket_combo = QComboBox()
-        self.bucket_combo.setEditable(True)
+        self.bucket_combo.setEditable(False)
         for b in self.buckets:
             self.bucket_combo.addItem(b)
-        form.addRow("R2 Bucket:", self.bucket_combo)
+
+        new_bucket_btn = QPushButton("➕ New Bucket")
+        new_bucket_btn.setObjectName("secondaryBtn")
+        new_bucket_btn.clicked.connect(self._create_new_bucket)
+
+        bucket_row.addWidget(self.bucket_combo, stretch=1)
+        bucket_row.addWidget(new_bucket_btn)
+        form.addRow("R2 Bucket:", bucket_row)
 
         main_layout.addWidget(form_frame)
 
@@ -166,6 +174,16 @@ class AddSyncDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(self.save_btn)
         main_layout.addLayout(btn_layout)
+
+    def _create_new_bucket(self):
+        from r2sync.gui.views.storage_view import CreateBucketDialog
+        dlg = CreateBucketDialog(self)
+        if dlg.exec() == QDialog.Accepted and hasattr(dlg, "bucket_name"):
+            name = dlg.bucket_name
+            idx = self.bucket_combo.findText(name)
+            if idx == -1:
+                self.bucket_combo.addItem(name)
+            self.bucket_combo.setCurrentText(name)
 
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Sync Directory", str(Path.home()))

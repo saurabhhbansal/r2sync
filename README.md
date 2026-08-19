@@ -1,8 +1,12 @@
-# r2sync
+<p align="center">
+  <img src="src/r2sync/gui/assets/logo.png" width="140" height="140" alt="r2sync Logo" />
+</p>
 
-**r2sync** is a native, private, open-source backup and **Multi-PC Cloud Synchronization** application for **Cloudflare R2** powered under-the-hood by **Rclone**.
+<h1 align="center">r2sync</h1>
 
-Designed for seamless background data protection and cross-device synchronization on Windows, **r2sync** keeps your computers continuously up to date through your personal Cloudflare R2 storage without developer proxies, cloud telemetry, or subscription fees.
+<p align="center">
+  <strong>Native, Private, Open-Source Backup & Multi-PC Cloud Synchronization for Cloudflare R2</strong>
+</p>
 
 ---
 

@@ -154,6 +154,20 @@ class R2Credentials:
     default_bucket: Optional[str] = None
     endpoint_url: Optional[str] = None
 
+    def __post_init__(self):
+        if self.account_id:
+            clean_acc = self.account_id.strip()
+            clean_acc = clean_acc.replace("https://", "").replace("http://", "").rstrip("/")
+            if ".r2.cloudflarestorage.com" in clean_acc:
+                clean_acc = clean_acc.replace(".r2.cloudflarestorage.com", "")
+            self.account_id = clean_acc
+        if self.access_key_id:
+            self.access_key_id = self.access_key_id.strip()
+        if self.secret_access_key:
+            self.secret_access_key = self.secret_access_key.strip()
+        if self.default_bucket:
+            self.default_bucket = self.default_bucket.strip()
+
     def get_endpoint(self) -> str:
         if self.endpoint_url:
             return self.endpoint_url

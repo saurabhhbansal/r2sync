@@ -172,9 +172,9 @@ class StorageView(QWidget):
     def set_account_id(self, account_id: str):
         if account_id:
             masked_acc = f"{account_id[:6]}••••••••{account_id[-4:]}" if len(account_id) > 10 else account_id
-            self.acc_label.setText(f"<b>Connected Account ID:</b> {masked_acc}  |  <b>Endpoint:</b> {account_id}.r2.cloudflarestorage.com")
+            self.acc_label.setText(f"<font color='#10B981'>● Connected</font> | <b>Account ID:</b> {masked_acc}  |  <b>Endpoint:</b> {account_id}.r2.cloudflarestorage.com")
         else:
-            self.acc_label.setText("<b>Cloudflare Account:</b> Not configured")
+            self.acc_label.setText("<font color='#94A3B8'>● Not Connected</font> | <b>Cloudflare Account:</b> Not configured in Settings")
 
     def set_buckets(self, buckets: list):
         self.buckets_table.setRowCount(len(buckets))

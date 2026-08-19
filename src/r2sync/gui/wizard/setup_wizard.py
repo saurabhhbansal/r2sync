@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -31,6 +32,7 @@ from r2sync.core.credentials import save_r2_credentials
 from r2sync.core.models import BackupJob, BackupMode, JobScheduleType, R2Credentials
 from r2sync.core.r2_client import CloudflareR2Client
 from r2sync.core.rclone_engine import RcloneEngine
+from r2sync.utils.paths import get_asset_path
 
 
 class ConnectionTestThread(QThread):
@@ -67,9 +69,17 @@ class WelcomePage(QWizardPage):
         banner.setObjectName("cardWidget")
         banner_layout = QVBoxLayout(banner)
 
-        icon_label = QLabel("🛡️ Direct-to-Storage Cloudflare R2 Backup")
+        top_row = QHBoxLayout()
+        logo_lbl = QLabel()
+        icon_path = get_asset_path("icon.png")
+        if icon_path.exists():
+            logo_lbl.setPixmap(QPixmap(str(icon_path)).scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        top_row.addWidget(logo_lbl)
+        icon_label = QLabel("Direct-to-Storage Cloudflare R2 Backup")
         icon_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #38BDF8;")
-        banner_layout.addWidget(icon_label)
+        top_row.addWidget(icon_label)
+        top_row.addStretch()
+        banner_layout.addLayout(top_row)
 
         desc_text = (
             "r2sync backs up your critical files and folders directly to your personal "
@@ -107,7 +117,7 @@ class R2AuthPage(QWizardPage):
         steps = QLabel(
             "1. Open the Cloudflare Dashboard\n"
             "2. Navigate to R2 > Manage R2 API Tokens > Create API Token\n"
-            "3. Select 'Object Read & Write' permission and copy your keys"
+            "3. Select 'Admin Read & Write' permission with 'Apply to all buckets'"
         )
         steps.setStyleSheet("color: #CBD5E1; font-size: 12px;")
         instr_layout.addWidget(steps)
@@ -189,7 +199,7 @@ class R2AuthPage(QWizardPage):
 class BucketSelectionPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("Select or Create R2 Bucket")
+        self.setTitle("Select Cloudflare R2 Bucket")
         self.setSubTitle("Choose the Cloudflare R2 bucket where your backups will be stored.")
 
         layout = QVBoxLayout(self)
@@ -199,14 +209,20 @@ class BucketSelectionPage(QWizardPage):
         card.setObjectName("cardWidget")
         card_layout = QVBoxLayout(card)
 
-        card_layout.addWidget(QLabel("Select an existing bucket or create a new one:"))
+        card_layout.addWidget(QLabel("Select an existing bucket from your Cloudflare account:"))
 
+        bucket_row = QHBoxLayout()
         self.bucket_combo = QComboBox()
-        self.bucket_combo.setEditable(True)
-        self.bucket_combo.setPlaceholderText("e.g. my-backup-bucket")
-        card_layout.addWidget(self.bucket_combo)
+        self.bucket_combo.setEditable(False)
+        self.new_bucket_btn = QPushButton("➕ New Bucket")
+        self.new_bucket_btn.setObjectName("secondaryBtn")
+        self.new_bucket_btn.clicked.connect(self._create_new_bucket)
 
-        create_note = QLabel("Tip: If the bucket name does not exist yet, r2sync will create it automatically.")
+        bucket_row.addWidget(self.bucket_combo, stretch=1)
+        bucket_row.addWidget(self.new_bucket_btn)
+        card_layout.addLayout(bucket_row)
+
+        create_note = QLabel("Tip: You can select an existing bucket or create a new one using '+ New Bucket'.")
         create_note.setStyleSheet("color: #94A3B8; font-size: 12px;")
         card_layout.addWidget(create_note)
 
@@ -223,6 +239,16 @@ class BucketSelectionPage(QWizardPage):
                 self.bucket_combo.addItem(b)
         else:
             self.bucket_combo.addItem("r2sync-backups")
+
+    def _create_new_bucket(self):
+        from r2sync.gui.views.storage_view import CreateBucketDialog
+        dlg = CreateBucketDialog(self)
+        if dlg.exec() == QDialog.Accepted and hasattr(dlg, "bucket_name"):
+            name = dlg.bucket_name
+            idx = self.bucket_combo.findText(name)
+            if idx == -1:
+                self.bucket_combo.addItem(name)
+            self.bucket_combo.setCurrentText(name)
 
 
 class FirstJobPage(QWizardPage):
@@ -298,6 +324,10 @@ class SetupWizard(QWizard):
         self.setWindowTitle(f"{APP_DISPLAY_NAME} Setup Wizard")
         self.setWizardStyle(QWizard.ModernStyle)
         self.resize(650, 480)
+
+        icon_path = get_asset_path("icon.png")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self.addPage(WelcomePage())
         self.addPage(R2AuthPage())

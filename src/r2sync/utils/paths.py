@@ -109,3 +109,17 @@ def get_recovery_dir() -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+
+def get_asset_path(filename: str = "icon.png") -> Path:
+    """Return path to an asset file in src/r2sync/gui/assets/ or bundled PyInstaller directory."""
+    if hasattr(sys, "_MEIPASS"):
+        meipass_path = Path(sys._MEIPASS) / "r2sync" / "gui" / "assets" / filename
+        if meipass_path.exists():
+            return meipass_path
+        meipass_root = Path(sys._MEIPASS) / filename
+        if meipass_root.exists():
+            return meipass_root
+    pkg_assets = Path(__file__).resolve().parent.parent / "gui" / "assets" / filename
+    return pkg_assets
+
+
