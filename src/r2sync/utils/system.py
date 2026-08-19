@@ -24,7 +24,7 @@ def check_internet_connection(host: str = "1.1.1.1", port: int = 53, timeout: fl
 
 
 def set_windows_autostart(app_name: str, app_path: str, enable: bool = True) -> bool:
-    """Register or unregister an application in HKCU\Software\Microsoft\Windows\CurrentVersion\Run."""
+    r"""Register or unregister an application in HKCU\Software\Microsoft\Windows\CurrentVersion\Run."""
     if not is_windows():
         return False
 

@@ -20,13 +20,11 @@ from r2sync.core.sync_engine import SyncEngine, check_paths_overlap
 
 
 @pytest.fixture
-def db_fixture():
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    db = Database(db_path=path)
+def db_fixture(tmp_path):
+    db_file = tmp_path / "test_sync.db"
+    db = Database(db_path=db_file)
     yield db
-    if os.path.exists(path):
-        os.remove(path)
+    db.close()
 
 
 def test_device_identity_generation(db_fixture):

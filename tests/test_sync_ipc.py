@@ -24,9 +24,8 @@ def get_free_port():
 
 
 @pytest.fixture
-def ipc_sync_setup():
-    fd, db_path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
+def ipc_sync_setup(tmp_path):
+    db_path = tmp_path / "test_ipc_sync.db"
     db = Database(db_path=db_path)
     rclone = RcloneEngine()
     be = BackupEngine(db=db, rclone_engine=rclone)
@@ -42,8 +41,8 @@ def ipc_sync_setup():
     yield client, db, server
 
     server.stop()
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    client.stop_event_stream()
+    db.close()
 
 
 def test_ipc_sync_crud_and_device_identity(ipc_sync_setup):

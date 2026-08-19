@@ -19,6 +19,7 @@ def test_mask_secret():
 def test_credential_save_and_retrieve(tmp_path, monkeypatch):
     monkeypatch.setenv("R2SYNC_DATA_DIR", str(tmp_path))
     vault = CredentialVault()
+    vault.delete_credentials()
 
     # Initially empty
     assert not vault.has_credentials()

@@ -58,6 +58,16 @@ class Database:
                 conn.rollback()
                 raise
 
+    def close(self) -> None:
+        """Close thread-local SQLite connection if open."""
+        with self._lock:
+            if hasattr(self._local, "connection") and self._local.connection is not None:
+                try:
+                    self._local.connection.close()
+                except Exception:
+                    pass
+                self._local.connection = None
+
     def init_schema(self) -> None:
         """Initialize tables and indexes if they do not exist."""
         with self.transaction() as cur:
