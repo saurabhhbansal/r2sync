@@ -56,6 +56,7 @@ jobs:
         with:
           files: dist/r2sync-setup.exe
           name: Release ${{ github.ref_name }}
+          generate_release_notes: true
           draft: false
           prerelease: false
         env:
