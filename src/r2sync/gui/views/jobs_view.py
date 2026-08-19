@@ -222,6 +222,12 @@ class JobsView(QWidget):
                 self.run_job_requested.emit(j.get("id"))
 
     def set_jobs(self, jobs: list):
+        import json
+        jobs_json = json.dumps(jobs, sort_keys=True)
+        if hasattr(self, "_last_jobs_json") and self._last_jobs_json == jobs_json:
+            return
+        self._last_jobs_json = jobs_json
+
         self.jobs_list = jobs or []
 
         # Clear existing cards

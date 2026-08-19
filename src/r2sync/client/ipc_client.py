@@ -45,8 +45,17 @@ class IPCClient:
         return None
 
     def is_service_running(self) -> bool:
+        """Fast non-blocking check (<1ms on localhost) to avoid stalling the UI thread."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.03)
         try:
-            res = self.call("ping", timeout=2.0)
+            sock.connect((self.host, self.port))
+            sock.close()
+        except Exception:
+            return False
+
+        try:
+            res = self.call("ping", timeout=0.3)
             return isinstance(res, dict) and res.get("status") == "ok"
         except Exception:
             return False

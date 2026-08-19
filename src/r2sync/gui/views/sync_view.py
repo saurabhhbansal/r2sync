@@ -388,6 +388,12 @@ class SyncView(QWidget):
             self.conflicts_btn.setStyleSheet("padding: 8px 14px; font-size: 13px;")
 
         # Populate Cards
+        import json
+        sync_json = json.dumps({"ds": datasets, "dev": devices, "cf": conflicts_count}, sort_keys=True)
+        if hasattr(self, "_last_sync_json") and self._last_sync_json == sync_json:
+            return
+        self._last_sync_json = sync_json
+
         while self.cards_layout.count() > 1:
             item = self.cards_layout.takeAt(0)
             if item.widget():

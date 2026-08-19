@@ -1,5 +1,4 @@
-import threading
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -32,6 +31,48 @@ from r2sync.core.r2_client import CloudflareR2Client
 from r2sync.core.speed_profiles import SPEED_PROFILES, get_speed_profile, list_speed_profiles
 from r2sync.core.updater import AutoUpdater, UpdateInfo
 from r2sync.utils.system import get_windows_autostart, set_windows_autostart
+
+
+class UpdateCheckWorker(QThread):
+    check_finished = Signal(object)
+
+    def run(self):
+        try:
+            info = AutoUpdater.check_for_updates()
+            self.check_finished.emit(info)
+        except Exception:
+            from r2sync.core.updater import UpdateInfo
+            from r2sync.config import APP_VERSION, GITHUB_REPO
+            self.check_finished.emit(UpdateInfo(
+                available=False,
+                current_version=APP_VERSION,
+                latest_version=APP_VERSION,
+                release_name="",
+                release_notes="",
+                html_url=f"https://github.com/{GITHUB_REPO}/releases",
+            ))
+
+
+class UpdateDownloadWorker(QThread):
+    progress = Signal(int)
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, update_info, parent=None):
+        super().__init__(parent)
+        self.update_info = update_info
+
+    def run(self):
+        try:
+            def cb(done, total):
+                if total > 0:
+                    pct = int(done / total * 100)
+                    self.progress.emit(pct)
+
+            path = AutoUpdater.download_update(self.update_info, progress_cb=cb)
+            self.finished.emit(path)
+        except Exception as e:
+            self.failed.emit(str(e))
 
 
 class SettingsView(QWidget):
@@ -361,11 +402,9 @@ class SettingsView(QWidget):
         self.update_status_msg.setText("Checking for latest release on GitHub...")
         self.update_status_msg.setStyleSheet("color: #FFB786; font-size: 12px;")
 
-        def worker():
-            info = AutoUpdater.check_for_updates()
-            QTimer.singleShot(0, lambda: self._on_update_check_result(info))
-
-        threading.Thread(target=worker, daemon=True).start()
+        self._check_worker = UpdateCheckWorker(self)
+        self._check_worker.check_finished.connect(self._on_update_check_result)
+        self._check_worker.start()
 
     def _on_update_check_result(self, info: UpdateInfo):
         self.check_update_btn.setEnabled(True)
@@ -376,6 +415,7 @@ class SettingsView(QWidget):
             )
             self.update_status_msg.setStyleSheet("color: #FFB786; font-size: 13px;")
             self.install_update_btn.setVisible(True)
+            self.install_update_btn.setEnabled(True)
             self.install_update_btn.setText(f"Update Now to v{info.latest_version}")
         else:
             self.update_status_msg.setText(f"You are running the latest version of r2sync (v{APP_VERSION}).")
@@ -396,19 +436,11 @@ class SettingsView(QWidget):
         self.update_progress.setVisible(True)
         self.update_progress.setValue(0)
 
-        def progress_cb(done: int, total: int):
-            if total > 0:
-                pct = int(done / total * 100)
-                QTimer.singleShot(0, lambda: self.update_progress.setValue(pct))
-
-        def download_worker():
-            try:
-                target_exe = AutoUpdater.download_update(self.pending_update, progress_cb=progress_cb)
-                QTimer.singleShot(0, lambda: self._on_update_downloaded(target_exe))
-            except Exception as e:
-                QTimer.singleShot(0, lambda: self._on_update_download_failed(str(e)))
-
-        threading.Thread(target=download_worker, daemon=True).start()
+        self._download_worker = UpdateDownloadWorker(self.pending_update, self)
+        self._download_worker.progress.connect(self.update_progress.setValue)
+        self._download_worker.finished.connect(self._on_update_downloaded)
+        self._download_worker.failed.connect(self._on_update_download_failed)
+        self._download_worker.start()
 
     def _on_update_downloaded(self, installer_path):
         self.install_update_btn.setEnabled(True)

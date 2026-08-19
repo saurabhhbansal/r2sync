@@ -191,14 +191,21 @@ class RcloneBinaryManager:
 
         return target_exe_path
 
+    _cached_version: Optional[str] = None
+
     @classmethod
-    def get_version(cls, exe_path: Optional[Path] = None) -> str:
+    def get_version(cls, exe_path: Optional[Path] = None, force_refresh: bool = False) -> str:
+        if cls._cached_version and not force_refresh and not exe_path:
+            return cls._cached_version
         try:
             exe = exe_path or cls.get_executable_path()
             flags = 0x08000000 if sys.platform == "win32" else 0
             res = subprocess.run([str(exe), "version"], capture_output=True, text=True, timeout=5, creationflags=flags)
             lines = res.stdout.strip().splitlines()
-            return lines[0] if lines else "Unknown"
+            ver = lines[0] if lines else "Unknown"
+            if not exe_path:
+                cls._cached_version = ver
+            return ver
         except Exception as e:
             return f"Error: {e}"
 

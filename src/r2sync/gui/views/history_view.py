@@ -260,6 +260,12 @@ class HistoryView(QWidget):
         self._populate_runs()
 
     def set_runs(self, runs: list):
+        import json
+        runs_json = json.dumps(runs, sort_keys=True)
+        if hasattr(self, "_last_runs_json") and self._last_runs_json == runs_json:
+            return
+        self._last_runs_json = runs_json
+
         self.runs_data = runs
         self._populate_runs()
 
