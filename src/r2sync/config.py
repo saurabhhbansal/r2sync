@@ -2,7 +2,7 @@
 
 APP_NAME = "r2sync"
 APP_DISPLAY_NAME = "r2sync"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 APP_AUTHOR = "r2sync contributors"
 APP_DESCRIPTION = "Native, private, open-source backup tool for Cloudflare R2"
 
@@ -72,4 +72,13 @@ CLOUDFLARE_R2_FREE_TIER_GB = 10                  # First 10 GB/month free
 CLOUDFLARE_R2_CLASS_A_PRICE_PER_MILLION = 4.50    # Writes, Lists, etc.
 CLOUDFLARE_R2_CLASS_B_PRICE_PER_MILLION = 0.36    # Reads
 CLOUDFLARE_PRICING_INFO_URL = "https://developers.cloudflare.com/r2/pricing/"
+
+# GitHub Updates
+GITHUB_REPO = "saurabhhbansal/r2sync"
+GITHUB_RELEASES_API = "https://api.github.com/repos/saurabhhbansal/r2sync/releases/latest"
+
+# Settings Keys
+SETTING_SPEED_PROFILE = "speed_profile"
+SETTING_AUTO_UPDATE = "auto_update"
+
 

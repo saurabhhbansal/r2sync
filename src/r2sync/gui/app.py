@@ -30,15 +30,13 @@ from r2sync.gui.tray import SystemTrayManager
 from r2sync.utils.paths import get_asset_path
 from r2sync.gui.views.add_sync_dialog import AddSyncDialog
 from r2sync.gui.views.conflict_dialog import ConflictCenterDialog
-from r2sync.gui.views.dashboard_view import DashboardView
 from r2sync.gui.views.history_view import HistoryView
 from r2sync.gui.views.job_edit_dialog import JobEditDialog
-from r2sync.gui.views.jobs_view import JobsView
 from r2sync.gui.views.manage_devices_dialog import ManageDevicesDialog
+from r2sync.gui.views.overview_sync_view import OverviewSyncView
 from r2sync.gui.views.settings_view import SettingsView
 from r2sync.gui.views.setup_pc_dialog import SetupPCDialog
 from r2sync.gui.views.storage_view import StorageView
-from r2sync.gui.views.sync_view import SyncView
 from r2sync.gui.wizard.setup_wizard import SetupWizard
 
 
@@ -57,7 +55,7 @@ class MainWindow(QMainWindow):
         self.internal_sync_engine = None
         self.internal_scheduler = None
 
-        self.setWindowTitle(f"{APP_DISPLAY_NAME} - Cloudflare R2 Sync & Backup")
+        self.setWindowTitle("r2sync")
         self.resize(1050, 700)
         self.setMinimumSize(900, 580)
 
@@ -186,20 +184,18 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addSpacing(16)
 
-        # Nav Buttons (Matching Stitch: Overview, Backups, Multi-PC Sync, Activity, Storage, Settings)
+        sidebar_layout.addSpacing(16)
+
+        # Consolidated 4 Nav Workspaces (Overview & Sync, Activity, Storage, Settings)
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        self.btn_nav_dashboard = self._create_nav_button("📊  Overview", 0)
-        self.btn_nav_jobs = self._create_nav_button("📁  Backups", 1)
-        self.btn_nav_sync = self._create_nav_button("🔄  Multi-PC Sync", 2)
-        self.btn_nav_history = self._create_nav_button("📜  Activity", 3)
-        self.btn_nav_storage = self._create_nav_button("☁️  Storage", 4)
-        self.btn_nav_settings = self._create_nav_button("⚙️  Settings", 5)
+        self.btn_nav_overview = self._create_nav_button("📊  Overview & Sync", 0)
+        self.btn_nav_history = self._create_nav_button("📜  Activity", 1)
+        self.btn_nav_storage = self._create_nav_button("☁️  Storage", 2)
+        self.btn_nav_settings = self._create_nav_button("⚙️  Settings", 3)
 
-        sidebar_layout.addWidget(self.btn_nav_dashboard)
-        sidebar_layout.addWidget(self.btn_nav_jobs)
-        sidebar_layout.addWidget(self.btn_nav_sync)
+        sidebar_layout.addWidget(self.btn_nav_overview)
         sidebar_layout.addWidget(self.btn_nav_history)
         sidebar_layout.addWidget(self.btn_nav_storage)
         sidebar_layout.addWidget(self.btn_nav_settings)
@@ -220,27 +216,23 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(sidebar)
 
         # -------------------------------------------------------------
-        # Right Stacked Content Views
+        # Right Stacked Content Views (4 Consolidated Workspaces)
         # -------------------------------------------------------------
         self.stack = QStackedWidget()
 
-        self.view_dashboard = DashboardView()
-        self.view_jobs = JobsView()
-        self.view_sync = SyncView()
+        self.view_overview = OverviewSyncView()
         self.view_history = HistoryView()
         self.view_storage = StorageView()
         self.view_settings = SettingsView()
 
-        self.stack.addWidget(self.view_dashboard)
-        self.stack.addWidget(self.view_jobs)
-        self.stack.addWidget(self.view_sync)
+        self.stack.addWidget(self.view_overview)
         self.stack.addWidget(self.view_history)
         self.stack.addWidget(self.view_storage)
         self.stack.addWidget(self.view_settings)
 
         root_layout.addWidget(self.stack, stretch=1)
 
-        self.btn_nav_dashboard.setChecked(True)
+        self.btn_nav_overview.setChecked(True)
 
     def _create_nav_button(self, text: str, view_index: int) -> QPushButton:
         btn = QPushButton(text)
@@ -271,7 +263,7 @@ class MainWindow(QMainWindow):
 
         def on_nav_clicked():
             self.stack.setCurrentIndex(view_index)
-            if view_index == 4:
+            if view_index == 2:
                 self._refresh_storage()
 
         btn.clicked.connect(on_nav_clicked)
@@ -298,28 +290,23 @@ class MainWindow(QMainWindow):
         self.ipc.add_event_listener("sync_completed", self._on_sync_completed)
 
     def _connect_signals(self):
-        # Dashboard signals
-        self.view_dashboard.new_job_requested.connect(self._open_new_job_dialog)
-        self.view_dashboard.backup_all_requested.connect(self._on_backup_all)
-        self.view_dashboard.view_history_requested.connect(lambda: self.btn_nav_history.click())
-        self.view_dashboard.cancel_job_requested.connect(self._on_cancel_job)
+        # Overview & Sync signals
+        self.view_overview.new_job_requested.connect(self._open_new_job_dialog)
+        self.view_overview.backup_all_requested.connect(self._on_backup_all)
+        self.view_overview.run_job_requested.connect(self._on_run_job)
+        self.view_overview.edit_job_requested.connect(self._open_edit_job_dialog)
+        self.view_overview.delete_job_requested.connect(self._on_delete_job)
+        self.view_overview.toggle_job_requested.connect(self._on_toggle_job)
+        self.view_overview.cancel_job_requested.connect(self._on_cancel_job)
 
-        # Jobs signals
-        self.view_jobs.create_job_requested.connect(self._open_new_job_dialog)
-        self.view_jobs.run_job_requested.connect(self._on_run_job)
-        self.view_jobs.edit_job_requested.connect(self._open_edit_job_dialog)
-        self.view_jobs.delete_job_requested.connect(self._on_delete_job)
-        self.view_jobs.toggle_job_requested.connect(self._on_toggle_job)
-
-        # Sync signals
-        self.view_sync.add_sync_requested.connect(self._open_add_sync_dialog)
-        self.view_sync.setup_pc_requested.connect(self._open_setup_pc_dialog)
-        self.view_sync.manage_computers_requested.connect(self._open_manage_computers_dialog)
-        self.view_sync.open_conflicts_requested.connect(self._open_conflicts_dialog)
-        self.view_sync.refresh_requested.connect(self.refresh_all_data)
-        self.view_sync.sync_now_requested.connect(self._on_sync_dataset_now)
-        self.view_sync.pause_toggle_requested.connect(self._on_pause_toggle_sync)
-        self.view_sync.delete_dataset_requested.connect(self._on_delete_sync_dataset)
+        self.view_overview.add_sync_requested.connect(self._open_add_sync_dialog)
+        self.view_overview.setup_pc_requested.connect(self._open_setup_pc_dialog)
+        self.view_overview.manage_computers_requested.connect(self._open_manage_computers_dialog)
+        self.view_overview.open_conflicts_requested.connect(self._open_conflicts_dialog)
+        self.view_overview.sync_now_requested.connect(self._on_sync_dataset_now)
+        self.view_overview.pause_toggle_requested.connect(self._on_pause_toggle_sync)
+        self.view_overview.delete_dataset_requested.connect(self._on_delete_sync_dataset)
+        self.view_overview.refresh_requested.connect(self.refresh_all_data)
 
         # History signals
         self.view_history.refresh_requested.connect(self._refresh_history)
@@ -333,6 +320,7 @@ class MainWindow(QMainWindow):
         self.view_settings.theme_changed.connect(lambda t: apply_theme(self, t))
         self.view_settings.credentials_saved.connect(self._on_credentials_saved)
         self.view_settings.device_name_saved.connect(self._on_device_name_saved)
+        self.view_settings.speed_profile_saved.connect(self._on_speed_profile_saved)
         self.view_settings.download_rclone_requested.connect(self._on_download_rclone)
         self.view_settings.test_connection_requested.connect(self._on_test_connection)
 
@@ -344,11 +332,15 @@ class MainWindow(QMainWindow):
         wizard = SetupWizard(self.db, self)
         if wizard.exec() == QDialog.Accepted:
             self._on_credentials_saved()
-            self.btn_nav_dashboard.click()
+            self.btn_nav_overview.click()
 
     def _on_credentials_saved(self):
         self.refresh_all_data()
         self._refresh_storage()
+
+    def _on_speed_profile_saved(self, profile_id: str):
+        self.db.set_setting("speed_profile", profile_id)
+        logger.info(f"Speed profile updated to: {profile_id}")
 
     def refresh_all_data(self):
         try:
@@ -360,20 +352,21 @@ class MainWindow(QMainWindow):
             conflicts_count = self.db.count_unresolved_conflicts()
             logs = self.db.list_activities(limit=15)
 
-            self.view_dashboard.update_stats(stats)
-            self.view_dashboard.update_jobs([j.to_dict() for j in jobs])
-            self.view_dashboard.update_activities([l.to_dict() for l in logs])
-            self.view_jobs.set_jobs([j.to_dict() for j in jobs])
-            self.view_sync.set_data(
+            self.view_overview.update_stats(stats)
+            self.view_overview.update_jobs([j.to_dict() for j in jobs])
+            self.view_overview.update_sync_data(
                 [d.to_dict() for d in sync_datasets],
                 [dev.to_dict() for dev in sync_devices],
                 conflicts_count,
             )
 
-            # Device identity in settings
+            # Device identity & speed profile in settings
             dev_id = self.db.get_or_create_device_id()
             dev_name = self.db.get_device_name()
             self.view_settings.set_device_identity(dev_id, dev_name)
+
+            saved_speed = self.db.get_setting("speed_profile") or "turbo"
+            self.view_settings.set_speed_profile(saved_speed)
 
             creds = get_r2_credentials()
             if creds and creds.account_id:
@@ -455,11 +448,11 @@ class MainWindow(QMainWindow):
             logger.debug(f"Refresh storage error: {e}")
 
     def _on_ipc_progress(self, event_data: dict):
-        self.view_dashboard.live_progress.update_progress(event_data)
+        self.view_overview.live_progress.update_progress(event_data)
         self.tray.set_syncing(True, f"Syncing ({int(event_data.get('percentage', 0))}%)")
 
     def _on_ipc_completed(self, run_data: dict):
-        self.view_dashboard.live_progress.on_job_completed(run_data)
+        self.view_overview.live_progress.on_job_completed(run_data)
         self.tray.set_syncing(False)
         self.refresh_all_data()
 
@@ -610,7 +603,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Connection test failed: {e}")
 
     def _on_sync_progress(self, event_data: dict):
-        self.view_dashboard.live_progress.update_progress(event_data)
+        self.view_overview.live_progress.update_progress(event_data)
         pct = int(event_data.get("percentage", 0))
         self.tray.set_syncing(True, f"Syncing ({pct}%)")
 
@@ -657,7 +650,8 @@ class MainWindow(QMainWindow):
                     initial_action=res["initial_action"],
                 )
             self.refresh_all_data()
-            self.btn_nav_sync.click()
+            self.btn_nav_overview.click()
+            self.view_overview.tab_sync_btn.click()
 
     def _open_setup_pc_dialog(self):
         discovered = []
@@ -703,7 +697,8 @@ class MainWindow(QMainWindow):
                 engine.join_remote_dataset(remote_info=info, local_path=loc)
 
             self.refresh_all_data()
-            self.btn_nav_sync.click()
+            self.btn_nav_overview.click()
+            self.view_overview.tab_sync_btn.click()
 
     def _open_manage_computers_dialog(self, dataset_id: str):
         dataset = self.db.get_sync_dataset(dataset_id)

@@ -20,7 +20,7 @@ class MockRcloneEngine:
     def is_job_running(self, job_id: int) -> bool:
         return False
 
-    def run_backup(self, job, run_record, progress_cb=None, file_transfer_cb=None, log_cb=None, creds=None):
+    def run_backup(self, job, run_record, progress_cb=None, file_transfer_cb=None, log_cb=None, creds=None, speed_profile=None):
         if self.should_fail:
             run_record.status = RunStatus.FAILED.value
             run_record.error_message = "Mock network error"

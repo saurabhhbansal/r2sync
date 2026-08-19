@@ -1,6 +1,6 @@
 // Inno Setup Script for r2sync Windows Installer
 #define MyAppName "r2sync"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "saurabhhbansal"
 #define MyAppURL "https://github.com/saurabhhbansal/r2sync"
 #define MyAppExeName "r2sync.exe"
@@ -22,6 +22,7 @@ OutputBaseFilename=r2sync-setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 SetupIconFile=icon.ico

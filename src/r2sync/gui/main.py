@@ -1,6 +1,17 @@
-"""Main entry point for r2sync desktop GUI application."""
-
+import os
 import sys
+
+# Check for TUI mode or headless Linux environment
+if "tui" in sys.argv or "--tui" in sys.argv or (
+    sys.platform.startswith("linux")
+    and not os.environ.get("DISPLAY")
+    and not os.environ.get("WAYLAND_DISPLAY")
+    and "--minimized" not in sys.argv
+):
+    from r2sync.client.tui import run_tui
+    run_tui()
+    sys.exit(0)
+
 from PySide6.QtGui import QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication

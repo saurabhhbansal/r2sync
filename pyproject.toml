@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r2sync"
-version = "1.1.1"
+version = "1.2.0"
 description = "Native, private, open-source backup tool for Cloudflare R2 powered by Rclone"
 readme = "README.md"
 authors = [{ name = "r2sync contributors" }]

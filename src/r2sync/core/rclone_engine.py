@@ -43,6 +43,7 @@ from r2sync.core.models import (
     SyncStatus,
     TransferProgressEvent,
 )
+from r2sync.core.speed_profiles import get_speed_profile, SpeedProfile
 from r2sync.utils.paths import (
     get_cache_dir,
     get_dataset_bisync_dir,
@@ -261,10 +262,12 @@ class RcloneEngine:
         file_transfer_cb: Optional[Callable[[FileTransfer], None]] = None,
         log_cb: Optional[Callable[[str], None]] = None,
         creds: Optional[R2Credentials] = None,
+        speed_profile: Optional[str] = None,
     ) -> BackupRun:
         """Execute a backup job (sync or copy) and stream progress & stats."""
         exe_path = RcloneBinaryManager.get_executable_path()
         env = self._build_env(creds)
+        prof = get_speed_profile(speed_profile)
 
         prefix = job.remote_prefix.strip("/")
         dest_remote = f"r2:{job.bucket_name}"
@@ -282,11 +285,11 @@ class RcloneEngine:
             "--stats", "1s",
             "--stats-log-level", "NOTICE",
             "--fast-list",
-            "--buffer-size", RCLONE_BUFFER_SIZE,
-            "--s3-chunk-size", RCLONE_CHUNK_SIZE,
-            "--s3-upload-concurrency", str(RCLONE_CONCURRENCY),
-            "--transfers", str(RCLONE_DEFAULT_TRANSFERS),
-            "--checkers", str(RCLONE_DEFAULT_CHECKERS),
+            "--buffer-size", prof.buffer_size,
+            "--s3-chunk-size", prof.chunk_size,
+            "--s3-upload-concurrency", str(max(prof.transfers // 2, 4)),
+            "--transfers", str(prof.transfers),
+            "--checkers", str(prof.checkers),
             "--s3-no-check-bucket",
             "--retries", "3",
             "--low-level-retries", "10",
@@ -598,10 +601,12 @@ class RcloneEngine:
         progress_cb: Optional[Callable[[SyncProgressEvent], None]] = None,
         log_cb: Optional[Callable[[str], None]] = None,
         creds: Optional[R2Credentials] = None,
+        speed_profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute bidirectional synchronization between local path and R2 dataset namespace."""
         exe_path = RcloneBinaryManager.get_executable_path()
         env = self._build_env(creds)
+        prof = get_speed_profile(speed_profile)
 
         workdir = get_dataset_bisync_dir(dataset.dataset_id)
         local_path = dataset.local_path
@@ -621,11 +626,11 @@ class RcloneEngine:
             "--stats", "1s",
             "--stats-log-level", "NOTICE",
             "--fast-list",
-            "--buffer-size", RCLONE_BUFFER_SIZE,
-            "--s3-chunk-size", RCLONE_CHUNK_SIZE,
-            "--s3-upload-concurrency", str(RCLONE_CONCURRENCY),
-            "--transfers", str(RCLONE_DEFAULT_TRANSFERS),
-            "--checkers", str(RCLONE_DEFAULT_CHECKERS),
+            "--buffer-size", prof.buffer_size,
+            "--s3-chunk-size", prof.chunk_size,
+            "--s3-upload-concurrency", str(max(prof.transfers // 2, 4)),
+            "--transfers", str(prof.transfers),
+            "--checkers", str(prof.checkers),
             "--s3-no-check-bucket",
             "--retries", "3",
             "--low-level-retries", "10",

@@ -167,6 +167,8 @@ class BackupEngine:
                     break
 
             # Execute backup
+            speed_prof = self.db.get_setting("speed_profile") or "turbo"
+
             def on_progress(p: TransferProgressEvent):
                 self._broadcast_progress(p)
 
@@ -179,6 +181,7 @@ class BackupEngine:
                 progress_cb=on_progress,
                 file_transfer_cb=on_file_transfer,
                 creds=creds,
+                speed_profile=speed_prof,
             )
 
             # If completed or canceled, do not retry

@@ -49,11 +49,11 @@ def test_main_window_and_views(qapp, tmp_path):
     window = MainWindow(ipc, db)
     window.refresh_all_data()
 
-    # Verify all 6 views are instantiated in stack
-    assert window.stack.count() == 6
+    # Verify all 4 consolidated views are instantiated in stack
+    assert window.stack.count() == 4
 
     # Test tab switching
-    for i in range(6):
+    for i in range(4):
         window.stack.setCurrentIndex(i)
         assert window.stack.currentIndex() == i
 

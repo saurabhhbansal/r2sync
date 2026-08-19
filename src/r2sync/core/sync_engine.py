@@ -373,6 +373,8 @@ class SyncEngine:
             logger.debug(f"Could not update remote metadata for {dataset_id}: {e}")
 
         # Progress Callback
+        speed_prof = self.db.get_setting("speed_profile") or "turbo"
+
         def on_progress(p: SyncProgressEvent):
             self._broadcast_progress(p)
 
@@ -383,6 +385,7 @@ class SyncEngine:
             force_resync=force_resync,
             progress_cb=on_progress,
             creds=creds,
+            speed_profile=speed_prof,
         )
 
         now_str = datetime.now().isoformat()

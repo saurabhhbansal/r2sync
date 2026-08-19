@@ -1,7 +1,5 @@
-"""Settings view for configuring credentials, background service, and preferences matching Stitch Design."""
-
-import sys
-from PySide6.QtCore import Qt, Signal
+import threading
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -12,19 +10,27 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
-from r2sync.config import APP_DISPLAY_NAME, APP_VERSION
+from r2sync.config import (
+    APP_DISPLAY_NAME,
+    APP_VERSION,
+    SETTING_SPEED_PROFILE,
+)
 from r2sync.core.credentials import (
     get_r2_credentials,
     mask_secret,
     save_r2_credentials,
 )
 from r2sync.core.r2_client import CloudflareR2Client
+from r2sync.core.speed_profiles import SPEED_PROFILES, get_speed_profile, list_speed_profiles
+from r2sync.core.updater import AutoUpdater, UpdateInfo
 from r2sync.utils.system import get_windows_autostart, set_windows_autostart
 
 
@@ -34,12 +40,14 @@ class SettingsView(QWidget):
     theme_changed = Signal(str)
     credentials_saved = Signal()
     device_name_saved = Signal(str)
+    speed_profile_saved = Signal(str)
     restart_service_requested = Signal()
     download_rclone_requested = Signal()
     test_connection_requested = Signal(str, str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.pending_update: Optional[UpdateInfo] = None
         self._init_ui()
         self._load_current_values()
 
@@ -54,7 +62,7 @@ class SettingsView(QWidget):
         title_box.setSpacing(2)
         title = QLabel("Settings")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Configure Cloudflare credentials, background service, and app preferences")
+        subtitle = QLabel("Configure Cloudflare credentials, transfer performance, auto-updates, and preferences")
         subtitle.setObjectName("subtitleLabel")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -113,7 +121,133 @@ class SettingsView(QWidget):
 
         layout.addWidget(creds_group)
 
-        # 2. Background Service & Engine Group
+        # 2. Transfer Speed & Concurrency Profile
+        speed_group = QGroupBox("Transfer Speed & Concurrency Profile")
+        speed_layout = QVBoxLayout(speed_group)
+        speed_layout.setSpacing(12)
+
+        speed_intro = QLabel("Choose a throughput profile matching your connection speed:")
+        speed_intro.setStyleSheet("color: #A58C7D; font-size: 12px;")
+        speed_layout.addWidget(speed_intro)
+
+        # Slider (0: Eco, 1: Balanced, 2: Fast, 3: Turbo, 4: Extreme)
+        self.speed_profiles_list = list_speed_profiles()
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setRange(0, len(self.speed_profiles_list) - 1)
+        self.speed_slider.setValue(3)  # default: Turbo
+        self.speed_slider.setTickPosition(QSlider.TicksBelow)
+        self.speed_slider.setTickInterval(1)
+        self.speed_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: #272A2E;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #F6821F;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #FFB786;
+                width: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
+                border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #FFFFFF;
+            }
+        """)
+        self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
+        speed_layout.addWidget(self.speed_slider)
+
+        # Profile Labels Row
+        label_row = QHBoxLayout()
+        for i, p in enumerate(self.speed_profiles_list):
+            lbl = QLabel(p.label.split()[0])
+            lbl.setStyleSheet("color: #A58C7D; font-size: 11px;")
+            if i == 0:
+                lbl.setAlignment(Qt.AlignLeft)
+            elif i == len(self.speed_profiles_list) - 1:
+                lbl.setAlignment(Qt.AlignRight)
+            else:
+                lbl.setAlignment(Qt.AlignCenter)
+            label_row.addWidget(lbl)
+        speed_layout.addLayout(label_row)
+
+        # Profile Info Banner Card
+        self.speed_card = QFrame()
+        self.speed_card.setStyleSheet("background-color: #111418; border: 1px solid #272A2E; border-radius: 8px; padding: 10px;")
+        card_layout = QVBoxLayout(self.speed_card)
+        card_layout.setSpacing(4)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+
+        self.speed_title_lbl = QLabel("<b>X-High (Turbo)</b> — 32 Parallel Streams")
+        self.speed_title_lbl.setStyleSheet("color: #FFB786; font-size: 13px;")
+        self.speed_desc_lbl = QLabel("Ultra-fast parallel transfers. Ideal for 500+ Mbps or gigabit fiber.")
+        self.speed_desc_lbl.setStyleSheet("color: #A58C7D; font-size: 12px;")
+        self.speed_metrics_lbl = QLabel("Streams: 32 | Checkers: 32 | Buffer: 32MB | Chunk: 16MB")
+        self.speed_metrics_lbl.setStyleSheet("color: #4AE176; font-size: 11px; font-weight: 500;")
+
+        card_layout.addWidget(self.speed_title_lbl)
+        card_layout.addWidget(self.speed_desc_lbl)
+        card_layout.addWidget(self.speed_metrics_lbl)
+        speed_layout.addWidget(self.speed_card)
+
+        layout.addWidget(speed_group)
+
+        # 3. Auto-Updates Group
+        update_group = QGroupBox("Software Updates")
+        update_layout = QVBoxLayout(update_group)
+        update_layout.setSpacing(10)
+
+        update_header = QHBoxLayout()
+        self.update_ver_lbl = QLabel(f"Current version: <b>v{APP_VERSION}</b>")
+        self.update_ver_lbl.setStyleSheet("color: #E1E2E8; font-size: 13px;")
+        self.check_update_btn = QPushButton("🔄 Check for Updates")
+        self.check_update_btn.setObjectName("secondaryBtn")
+        self.check_update_btn.clicked.connect(self._check_for_updates)
+        update_header.addWidget(self.update_ver_lbl)
+        update_header.addStretch()
+        update_header.addWidget(self.check_update_btn)
+        update_layout.addLayout(update_header)
+
+        self.update_status_banner = QFrame()
+        self.update_status_banner.setStyleSheet("background-color: #111418; border: 1px solid #272A2E; border-radius: 8px; padding: 10px;")
+        banner_layout = QVBoxLayout(self.update_status_banner)
+        banner_layout.setSpacing(6)
+        banner_layout.setContentsMargins(10, 8, 10, 8)
+
+        self.update_status_msg = QLabel("✓ You are running the latest version of r2sync.")
+        self.update_status_msg.setStyleSheet("color: #4AE176; font-size: 12px;")
+        banner_layout.addWidget(self.update_status_msg)
+
+        self.update_progress = QProgressBar()
+        self.update_progress.setVisible(False)
+        self.update_progress.setFixedHeight(8)
+        self.update_progress.setStyleSheet("""
+            QProgressBar {
+                background-color: #191C20;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #F6821F;
+                border-radius: 4px;
+            }
+        """)
+        banner_layout.addWidget(self.update_progress)
+
+        self.install_update_btn = QPushButton("⬇ Download & Install Update Now")
+        self.install_update_btn.setStyleSheet("padding: 8px 16px; font-weight: 600;")
+        self.install_update_btn.setVisible(False)
+        self.install_update_btn.clicked.connect(self._start_update_download)
+        banner_layout.addWidget(self.install_update_btn)
+
+        update_layout.addWidget(self.update_status_banner)
+        layout.addWidget(update_group)
+
+        # 4. Background Service & Engine Group
         svc_group = QGroupBox("Background Engine & Service")
         svc_layout = QFormLayout(svc_group)
         svc_layout.setSpacing(12)
@@ -137,7 +271,7 @@ class SettingsView(QWidget):
 
         layout.addWidget(svc_group)
 
-        # 3. Device Identity (Multi-PC Synchronization) Group
+        # 5. Device Identity (Multi-PC Synchronization) Group
         dev_group = QGroupBox("Computer & Device Identity")
         dev_layout = QFormLayout(dev_group)
         dev_layout.setSpacing(12)
@@ -158,7 +292,7 @@ class SettingsView(QWidget):
 
         layout.addWidget(dev_group)
 
-        # 4. Preferences Group
+        # 6. Preferences Group
         pref_group = QGroupBox("Application Preferences")
         pref_layout = QFormLayout(pref_group)
         pref_layout.setSpacing(12)
@@ -175,12 +309,12 @@ class SettingsView(QWidget):
 
         layout.addWidget(pref_group)
 
-        # 5. About & Open Source Group
+        # 7. About & Open Source Group
         about_group = QGroupBox("About r2sync")
         about_layout = QVBoxLayout(about_group)
         about_layout.setSpacing(8)
 
-        ver_lbl = QLabel(f"<b>{APP_DISPLAY_NAME} v{APP_VERSION}</b> — Cloudflare R2 Backup & Multi-PC Sync")
+        ver_lbl = QLabel(f"<b>r2sync v{APP_VERSION}</b> — Private, native Cloudflare R2 backup & sync")
         ver_lbl.setStyleSheet("color: #E1E2E8;")
         about_layout.addWidget(ver_lbl)
 
@@ -193,6 +327,103 @@ class SettingsView(QWidget):
 
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
+
+    def _on_speed_slider_changed(self, index: int):
+        if 0 <= index < len(self.speed_profiles_list):
+            p = self.speed_profiles_list[index]
+            self.speed_title_lbl.setText(f"<b>{p.label}</b> — {p.transfers} Parallel Streams")
+            self.speed_desc_lbl.setText(p.description)
+            concurrency = max(p.transfers // 2, 4)
+            self.speed_metrics_lbl.setText(
+                f"Streams: {p.transfers} | Checkers: {p.checkers} | Buffer: {p.buffer_size} | Chunk: {p.chunk_size} | Upload Concurrency: {concurrency}"
+            )
+            self.speed_profile_saved.emit(p.id)
+
+    def set_speed_profile(self, profile_id: str):
+        for i, p in enumerate(self.speed_profiles_list):
+            if p.id == profile_id:
+                self.speed_slider.setValue(i)
+                self._on_speed_slider_changed(i)
+                break
+
+    def _check_for_updates(self):
+        self.check_update_btn.setEnabled(False)
+        self.update_status_msg.setText("Checking for latest release on GitHub...")
+        self.update_status_msg.setStyleSheet("color: #FFB786; font-size: 12px;")
+
+        def worker():
+            info = AutoUpdater.check_for_updates()
+            QTimer.singleShot(0, lambda: self._on_update_check_result(info))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_check_result(self, info: UpdateInfo):
+        self.check_update_btn.setEnabled(True)
+        self.pending_update = info
+        if info.available:
+            self.update_status_msg.setText(
+                f"🚀 <b>New Version Available: v{info.latest_version}</b> ({info.release_name})"
+            )
+            self.update_status_msg.setStyleSheet("color: #FFB786; font-size: 13px;")
+            self.install_update_btn.setVisible(True)
+            self.install_update_btn.setText(f"⬇ Update Now to v{info.latest_version}")
+        else:
+            self.update_status_msg.setText(f"✓ You are running the latest version of r2sync (v{APP_VERSION}).")
+            self.update_status_msg.setStyleSheet("color: #4AE176; font-size: 12px;")
+            self.install_update_btn.setVisible(False)
+
+    def _start_update_download(self):
+        if not self.pending_update or not self.pending_update.download_url:
+            QMessageBox.information(
+                self,
+                "Manual Download",
+                f"Please download the latest release from:\n{self.pending_update.html_url if self.pending_update else 'https://github.com/' + GITHUB_REPO + '/releases'}",
+            )
+            return
+
+        self.install_update_btn.setEnabled(False)
+        self.install_update_btn.setText("Downloading Update...")
+        self.update_progress.setVisible(True)
+        self.update_progress.setValue(0)
+
+        def progress_cb(done: int, total: int):
+            if total > 0:
+                pct = int(done / total * 100)
+                QTimer.singleShot(0, lambda: self.update_progress.setValue(pct))
+
+        def download_worker():
+            try:
+                target_exe = AutoUpdater.download_update(self.pending_update, progress_cb=progress_cb)
+                QTimer.singleShot(0, lambda: self._on_update_downloaded(target_exe))
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._on_update_download_failed(str(e)))
+
+        threading.Thread(target=download_worker, daemon=True).start()
+
+    def _on_update_downloaded(self, installer_path):
+        self.install_update_btn.setEnabled(True)
+        self.install_update_btn.setText("Restarting to Apply Update...")
+        self.update_status_msg.setText("✓ Download complete. Launching update installer...")
+        self.update_status_msg.setStyleSheet("color: #4AE176; font-size: 12px;")
+
+        if sys.platform == "win32":
+            AutoUpdater.apply_update_windows(installer_path, silent=False)
+            from PySide6.QtWidgets import QApplication
+            QApplication.quit()
+        else:
+            QMessageBox.information(
+                self,
+                "Update Ready",
+                f"Update downloaded successfully to:\n{installer_path}",
+            )
+
+    def _on_update_download_failed(self, error_msg: str):
+        self.install_update_btn.setEnabled(True)
+        self.install_update_btn.setText("⬇ Retry Update Download")
+        self.update_progress.setVisible(False)
+        self.update_status_msg.setText(f"❌ Update download failed: {error_msg}")
+        self.update_status_msg.setStyleSheet("color: #FFB4AB; font-size: 12px;")
+        QMessageBox.warning(self, "Update Failed", f"Could not download update:\n{error_msg}")
 
     def _load_current_values(self):
         creds = get_r2_credentials()
@@ -280,3 +511,4 @@ class SettingsView(QWidget):
             self.svc_status_label.setText("<font color='#4AE176'>● Background Service Active</font>")
         else:
             self.svc_status_label.setText("<font color='#FFB4AB'>● Background Service Offline</font>")
+

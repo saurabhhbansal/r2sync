@@ -31,11 +31,36 @@ def main() -> int:
     # Runs / History
     subparsers.add_parser("history", help="List recent backup runs")
 
+    # Interactive TUI
+    subparsers.add_parser("tui", help="Launch interactive terminal dashboard (TUI)")
+
+    # Updates
+    subparsers.add_parser("update", help="Check for r2sync updates")
+
     args = parser.parse_args()
+
+    if args.command == "tui":
+        from r2sync.client.tui import run_tui
+        run_tui()
+        return 0
+
+    if args.command == "update":
+        from r2sync.core.updater import AutoUpdater
+        from r2sync.config import APP_VERSION
+        print(f"Checking for updates (current version: v{APP_VERSION})...")
+        info = AutoUpdater.check_for_updates()
+        if info.available:
+            print(f"🚀 New version available: v{info.latest_version} ({info.release_name})")
+            print(f"Release URL: {info.html_url}")
+            if info.download_url:
+                print(f"Download URL: {info.download_url}")
+        else:
+            print(f"✓ You are already on the latest version of r2sync (v{APP_VERSION}).")
+        return 0
 
     client = IPCClient()
     if not client.is_service_running():
-        print("Error: r2sync background service is not running. Please start r2sync-service first.")
+        print("Error: r2sync background service is not running. Please start r2sync-service first (or run 'r2sync-cli tui').")
         return 1
 
     try:
