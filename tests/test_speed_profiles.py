@@ -18,12 +18,12 @@ def test_speed_profiles_list():
 def test_get_speed_profile():
     turbo = get_speed_profile("turbo")
     assert turbo.transfers == 32
-    assert turbo.checkers == 32
+    assert turbo.checkers == 64
     assert turbo.buffer_size == "32M"
 
     eco = get_speed_profile("eco")
     assert eco.transfers == 4
-    assert eco.checkers == 4
+    assert eco.checkers == 8
 
     fallback = get_speed_profile("nonexistent_profile")
     assert fallback.id == DEFAULT_SPEED_PROFILE_ID
