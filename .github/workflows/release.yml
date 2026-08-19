@@ -1,15 +1,17 @@
-name: Build Windows Installer
+name: Release Windows Installer
 
 on:
   push:
-    branches: [main, master]
     tags: ['v*']
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-windows:
+  release-windows:
+    name: Build & Publish Windows Installer
     runs-on: windows-latest
 
     permissions:
