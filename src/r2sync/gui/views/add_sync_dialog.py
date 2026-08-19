@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from r2sync.config import DEFAULT_EXCLUDE_PATTERNS
 from r2sync.core.models import SyncDataset, SyncScheduleMode, SyncStatus
+from r2sync.gui.views.folder_tree_widget import FolderTreeFilterWidget
 
 
 class AddSyncDialog(QDialog):
@@ -46,7 +47,7 @@ class AddSyncDialog(QDialog):
         self.initial_action = "merge"
 
         self.setWindowTitle("Add Sync Folder")
-        self.resize(580, 640)
+        self.resize(620, 720)
         self._init_ui()
 
     def _init_ui(self):
@@ -162,14 +163,18 @@ class AddSyncDialog(QDialog):
         sched_layout.addWidget(self.sched_combo)
         main_layout.addWidget(sched_group)
 
-        # 6. Exclusions
-        opt_group = QGroupBox("Exclusion Filters")
+        # 6. Exclusions (Interactive Folder Structure Tree)
+        opt_group = QGroupBox("Selective Sync & Exclusion Rules")
         opt_layout = QVBoxLayout(opt_group)
-        self.exclude_edit = QTextEdit()
-        self.exclude_edit.setPlaceholderText("*.tmp\n.git/\nnode_modules/")
-        self.exclude_edit.setMaximumHeight(70)
-        self.exclude_edit.setPlainText("\n".join(DEFAULT_EXCLUDE_PATTERNS[:6]))
-        opt_layout.addWidget(self.exclude_edit)
+        opt_layout.setSpacing(6)
+
+        tree_hint = QLabel("Uncheck any folders or files below to exclude them from synchronization:")
+        tree_hint.setStyleSheet("color: #A58C7D; font-size: 12px;")
+        opt_layout.addWidget(tree_hint)
+
+        self.tree_filter = FolderTreeFilterWidget(parent=self)
+        opt_layout.addWidget(self.tree_filter)
+
         main_layout.addWidget(opt_group)
 
         # Bottom Buttons
@@ -204,9 +209,14 @@ class AddSyncDialog(QDialog):
             self.source_input.setText(folder)
             if not self.name_input.text():
                 self.name_input.setText(Path(folder).name)
+            self.tree_filter.set_root_path(folder)
 
     def _on_path_changed(self, path: str):
         path = path.strip()
+        if path and os.path.exists(path) and os.path.isdir(path):
+            if self.tree_filter.root_path != os.path.abspath(path):
+                self.tree_filter.set_root_path(path)
+
         if path and self.overlap_checker:
             overlaps = self.overlap_checker(path)
             if overlaps:
@@ -277,7 +287,7 @@ class AddSyncDialog(QDialog):
             sched_mode = SyncScheduleMode.MANUAL.value
             interval_mins = 60
 
-        excludes = [line.strip() for line in self.exclude_edit.toPlainText().splitlines() if line.strip()]
+        excludes = self.tree_filter.get_exclude_patterns()
         self.initial_action = "replace" if self.radio_replace.isChecked() else "merge"
 
         self.result_data = {

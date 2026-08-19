@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from r2sync.config import DEFAULT_EXCLUDE_PATTERNS
 from r2sync.core.models import BackupJob, BackupMode, JobScheduleType
+from r2sync.gui.views.folder_tree_widget import FolderTreeFilterWidget
 
 
 class JobEditDialog(QDialog):
@@ -39,7 +40,7 @@ class JobEditDialog(QDialog):
         self.buckets = buckets or ["r2sync-backups"]
 
         self.setWindowTitle("Edit Backup Job" if job else "Create Backup Job")
-        self.resize(560, 620)
+        self.resize(620, 720)
         self._init_ui()
         if job:
             self._load_job_data(job)
@@ -63,6 +64,7 @@ class JobEditDialog(QDialog):
         folder_row = QHBoxLayout()
         self.source_input = QLineEdit()
         self.source_input.setPlaceholderText("Full path to local directory")
+        self.source_input.textChanged.connect(self._on_source_text_changed)
         browse_btn = QPushButton("📁 Browse...")
         browse_btn.setObjectName("secondaryBtn")
         browse_btn.setStyleSheet("padding: 6px 12px;")
@@ -134,8 +136,8 @@ class JobEditDialog(QDialog):
 
         main_layout.addWidget(sched_group)
 
-        # 5. Backup Mode & Exclusions
-        opt_group = QGroupBox("Sync Options & Exclusions")
+        # 5. Backup Mode & Exclusions (Interactive Folder Structure Tree)
+        opt_group = QGroupBox("Selective Backup & Exclusion Rules")
         opt_layout = QVBoxLayout(opt_group)
         opt_layout.setSpacing(8)
 
@@ -150,12 +152,12 @@ class JobEditDialog(QDialog):
         self.delete_excluded_cb = QCheckBox("Delete files matching exclusion rules from destination")
         opt_layout.addWidget(self.delete_excluded_cb)
 
-        opt_layout.addWidget(QLabel("Exclusion Patterns (one per line):"))
-        self.exclude_edit = QTextEdit()
-        self.exclude_edit.setPlaceholderText("*.tmp\n.git/\nnode_modules/")
-        self.exclude_edit.setMaximumHeight(70)
-        self.exclude_edit.setPlainText("\n".join(DEFAULT_EXCLUDE_PATTERNS[:7]))
-        opt_layout.addWidget(self.exclude_edit)
+        tree_hint = QLabel("Uncheck any folders or files below to exclude them from the backup:")
+        tree_hint.setStyleSheet("color: #A58C7D; font-size: 12px; margin-top: 4px;")
+        opt_layout.addWidget(tree_hint)
+
+        self.tree_filter = FolderTreeFilterWidget(parent=self)
+        opt_layout.addWidget(self.tree_filter)
 
         main_layout.addWidget(opt_group)
 
@@ -182,6 +184,13 @@ class JobEditDialog(QDialog):
                 self.name_input.setText(f"{Path(folder).name} Backup")
             if not self.prefix_input.text():
                 self.prefix_input.setText(Path(folder).name)
+            self.tree_filter.set_root_path(folder)
+
+    def _on_source_text_changed(self, text: str):
+        path = text.strip()
+        if path and os.path.exists(path) and os.path.isdir(path):
+            if self.tree_filter.root_path != os.path.abspath(path):
+                self.tree_filter.set_root_path(path)
 
     def _on_schedule_changed(self, index: int):
         self.time_row.setEnabled(index in (0, 2))
@@ -229,8 +238,10 @@ class JobEditDialog(QDialog):
             self.sync_radio.setChecked(True)
 
         self.delete_excluded_cb.setChecked(job.delete_excluded)
-        if job.exclude_patterns:
-            self.exclude_edit.setPlainText("\n".join(job.exclude_patterns))
+        if job.source_path and os.path.exists(job.source_path):
+            self.tree_filter.set_root_path(job.source_path, job.exclude_patterns)
+        elif job.exclude_patterns:
+            self.tree_filter.set_exclude_patterns(job.exclude_patterns)
 
     def _validate_and_save(self):
         name = self.name_input.text().strip()
@@ -261,7 +272,7 @@ class JobEditDialog(QDialog):
             sched_type = JobScheduleType.DAILY.value
 
         time_str = f"{self.hour_spin.value():02d}:{self.min_spin.value():02d}"
-        excludes = [line.strip() for line in self.exclude_edit.toPlainText().splitlines() if line.strip()]
+        excludes = self.tree_filter.get_exclude_patterns()
 
         if self.job:
             self.job.name = name

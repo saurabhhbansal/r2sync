@@ -60,3 +60,46 @@ def test_main_window_and_views(qapp, tmp_path):
     # Test light theme switch
     apply_theme(qapp, "light")
     apply_theme(qapp, "dark")
+
+
+def test_folder_tree_filter_widget(qapp, tmp_path):
+    if not PYSIDE6_AVAILABLE:
+        pytest.skip(f"PySide6 runtime libraries unavailable: {PYSIDE6_IMPORT_ERROR}")
+
+    from PySide6.QtCore import Qt
+    from r2sync.gui.views.folder_tree_widget import FolderTreeFilterWidget
+    from r2sync.gui.views.job_edit_dialog import JobEditDialog
+    from r2sync.gui.views.add_sync_dialog import AddSyncDialog
+
+    # Create dummy folder structure
+    src = tmp_path / "my_project"
+    src.mkdir()
+    (src / "src").mkdir()
+    (src / "src" / "app.py").write_text("print('hello')")
+    (src / "node_modules").mkdir()
+    (src / "node_modules" / "pkg.json").write_text("{}")
+    (src / "notes.txt").write_text("notes")
+
+    widget = FolderTreeFilterWidget(str(src))
+    assert widget.tree.topLevelItemCount() == 1
+
+    root_item = widget.tree.topLevelItem(0)
+    assert root_item.childCount() >= 3
+
+    # Test exclude temp artifacts
+    widget._uncheck_temp_artifacts()
+    patterns = widget.get_exclude_patterns()
+    assert any("node_modules" in p for p in patterns)
+
+    # Test JobEditDialog with FolderTreeFilterWidget
+    dlg = JobEditDialog(buckets=["my-bucket"])
+    dlg.source_input.setText(str(src))
+    dlg.name_input.setText("Project Backup")
+    assert dlg.tree_filter.root_path == str(src.resolve())
+
+    # Test AddSyncDialog with FolderTreeFilterWidget
+    sync_dlg = AddSyncDialog(buckets=["my-bucket"])
+    sync_dlg.source_input.setText(str(src))
+    sync_dlg.name_input.setText("Project Sync")
+    assert sync_dlg.tree_filter.root_path == str(src.resolve())
+
