@@ -6,7 +6,8 @@ __pycache__/
 .venv-test/
 build/
 dist/
-*.spec
+# Packaging specs to keep
+!packaging/*.spec
 
 # Test / tooling caches
 .pytest_cache/

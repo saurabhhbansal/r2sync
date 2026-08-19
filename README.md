@@ -88,7 +88,7 @@ Mutable application data is stored in standard OS app data directories:
 ### Setup & Testing
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/r2sync.git
+git clone https://github.com/saurabhhbansal/r2sync.git
 cd r2sync
 
 # Install package in editable mode with development dependencies
