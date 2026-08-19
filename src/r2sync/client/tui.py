@@ -367,9 +367,9 @@ class R2SyncTUI:
         try:
             info = AutoUpdater.check_for_updates()
             if info.available:
-                self.update_msg = f"🚀 New version v{info.latest_version} available! Run 'pip install -U r2sync' or download from {info.html_url}"
+                self.update_msg = f"New version v{info.latest_version} available! Run 'pip install -U r2sync' or download from {info.html_url}"
             else:
-                self.update_msg = f"✓ You are on the latest version (v{APP_VERSION})."
+                self.update_msg = f"You are on the latest version (v{APP_VERSION})."
         except Exception as e:
             self.update_msg = f"Update check failed: {e}"
 

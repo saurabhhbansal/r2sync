@@ -65,7 +65,7 @@ class JobEditDialog(QDialog):
         self.source_input = QLineEdit()
         self.source_input.setPlaceholderText("Full path to local directory")
         self.source_input.textChanged.connect(self._on_source_text_changed)
-        browse_btn = QPushButton("📁 Browse...")
+        browse_btn = QPushButton("Browse...")
         browse_btn.setObjectName("secondaryBtn")
         browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_source)
@@ -80,7 +80,7 @@ class JobEditDialog(QDialog):
         for b in self.buckets:
             self.bucket_combo.addItem(b)
 
-        new_bucket_btn = QPushButton("➕ New Bucket")
+        new_bucket_btn = QPushButton("+ New Bucket")
         new_bucket_btn.setObjectName("secondaryBtn")
         new_bucket_btn.setStyleSheet("padding: 6px 12px;")
         new_bucket_btn.clicked.connect(self._create_new_bucket)

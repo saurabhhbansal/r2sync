@@ -165,8 +165,8 @@ class MainWindow(QMainWindow):
             pix = QPixmap(str(icon_path)).scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             brand_logo.setPixmap(pix)
         else:
-            brand_logo.setText("🛡️")
-            brand_logo.setStyleSheet("font-size: 20px;")
+            brand_logo.setText("[R2]")
+            brand_logo.setStyleSheet("font-size: 14px; font-weight: bold; color: #F6821F;")
 
         brand_title_box = QVBoxLayout()
         brand_title_box.setSpacing(0)
@@ -184,16 +184,14 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addSpacing(16)
 
-        sidebar_layout.addSpacing(16)
-
         # Consolidated 4 Nav Workspaces (Overview & Sync, Activity, Storage, Settings)
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        self.btn_nav_overview = self._create_nav_button("📊  Overview & Sync", 0)
-        self.btn_nav_history = self._create_nav_button("📜  Activity", 1)
-        self.btn_nav_storage = self._create_nav_button("☁️  Storage", 2)
-        self.btn_nav_settings = self._create_nav_button("⚙️  Settings", 3)
+        self.btn_nav_overview = self._create_nav_button("Overview & Sync", 0)
+        self.btn_nav_history = self._create_nav_button("Activity", 1)
+        self.btn_nav_storage = self._create_nav_button("Storage", 2)
+        self.btn_nav_settings = self._create_nav_button("Settings", 3)
 
         sidebar_layout.addWidget(self.btn_nav_overview)
         sidebar_layout.addWidget(self.btn_nav_history)
@@ -201,14 +199,14 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.btn_nav_settings)
         sidebar_layout.addStretch()
 
-        # System Status Indicator at bottom of sidebar (Stitch Footer)
+        # System Status Indicator at bottom of sidebar
         status_frame = QFrame()
         status_frame.setStyleSheet("border-top: 1px solid #272A2E; padding-top: 12px;")
         sf_layout = QHBoxLayout(status_frame)
         sf_layout.setContentsMargins(0, 0, 0, 0)
         sf_layout.setSpacing(6)
 
-        self.svc_badge = QLabel("● Everything is healthy")
+        self.svc_badge = QLabel("● All systems operational")
         self.svc_badge.setStyleSheet("color: #4AE176; font-size: 12px; font-weight: 500;")
         sf_layout.addWidget(self.svc_badge)
         sidebar_layout.addWidget(status_frame)
@@ -378,10 +376,10 @@ class MainWindow(QMainWindow):
             is_svc_running = self.ipc.is_service_running()
             if is_svc_running:
                 if conflicts_count > 0:
-                    self.svc_badge.setText(f"⚠️ {conflicts_count} Conflict(s)")
+                    self.svc_badge.setText(f"● {conflicts_count} Conflict(s)")
                     self.svc_badge.setStyleSheet("color: #F6821F; font-size: 12px; font-weight: 600;")
                 else:
-                    self.svc_badge.setText("● Everything is healthy")
+                    self.svc_badge.setText("● All systems operational")
                     self.svc_badge.setStyleSheet("color: #4AE176; font-size: 12px; font-weight: 500;")
                 self.view_settings.set_service_status(True)
                 try:

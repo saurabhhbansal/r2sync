@@ -74,7 +74,7 @@ class FolderTreeFilterWidget(QWidget):
         self.select_all_btn.clicked.connect(self._select_all)
         toolbar.addWidget(self.select_all_btn)
 
-        self.uncheck_temp_btn = QPushButton("🧹 Exclude Build & Temp")
+        self.uncheck_temp_btn = QPushButton("Exclude Build & Temp Files")
         self.uncheck_temp_btn.setObjectName("secondaryBtn")
         self.uncheck_temp_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         self.uncheck_temp_btn.clicked.connect(self._uncheck_temp_artifacts)
@@ -188,7 +188,7 @@ class FolderTreeFilterWidget(QWidget):
         try:
             root_name = Path(self.root_path).name or self.root_path
             root_item = QTreeWidgetItem(self.tree)
-            root_item.setText(0, f"📁 {root_name} (Root)")
+            root_item.setText(0, f"{root_name} (Root)")
             root_item.setData(0, Qt.UserRole, "")  # Empty relative path
             root_item.setData(0, Qt.UserRole + 1, True)  # Is Directory
             root_item.setFlags(root_item.flags() | Qt.ItemIsUserCheckable)
@@ -224,7 +224,7 @@ class FolderTreeFilterWidget(QWidget):
             child_item.setData(0, Qt.UserRole, rel_path)
 
             if entry.is_dir(follow_symlinks=False):
-                child_item.setText(0, f"📁 {entry.name}")
+                child_item.setText(0, entry.name)
                 child_item.setData(0, Qt.UserRole + 1, True)
                 child_item.setFlags(child_item.flags() | Qt.ItemIsUserCheckable)
                 child_item.setCheckState(0, Qt.Checked)
@@ -240,7 +240,7 @@ class FolderTreeFilterWidget(QWidget):
                     pass
 
             else:
-                child_item.setText(0, f"📄 {entry.name}")
+                child_item.setText(0, entry.name)
                 child_item.setData(0, Qt.UserRole + 1, False)
                 child_item.setFlags(child_item.flags() | Qt.ItemIsUserCheckable)
                 child_item.setCheckState(0, Qt.Checked)
@@ -432,9 +432,9 @@ class FolderTreeFilterWidget(QWidget):
         if not self.root_path:
             self.summary_label.setText("No folder selected")
         elif excluded_count == 0:
-            self.summary_label.setText("✓ All items selected for sync & backup")
+            self.summary_label.setText("All items selected for sync & backup")
         else:
-            self.summary_label.setText(f"✓ Items included | <font color='#FFB786'><b>{excluded_count}</b> folder(s)/file(s) unchecked & excluded</font>")
+            self.summary_label.setText(f"Items included | <font color='#FFB786'><b>{excluded_count}</b> folder(s)/file(s) unchecked & excluded</font>")
 
     def get_exclude_patterns(self) -> List[str]:
         """

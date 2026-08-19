@@ -68,11 +68,11 @@ class OverviewSyncView(QWidget):
         btn_box = QHBoxLayout()
         btn_box.setSpacing(8)
 
-        self.setup_pc_btn = QPushButton("🔗 Set Up This PC")
+        self.setup_pc_btn = QPushButton("Set Up This PC")
         self.setup_pc_btn.setObjectName("secondaryBtn")
         self.setup_pc_btn.clicked.connect(self.setup_pc_requested.emit)
 
-        self.backup_all_btn = QPushButton("⚡ Backup All")
+        self.backup_all_btn = QPushButton("Backup All")
         self.backup_all_btn.setObjectName("secondaryBtn")
         self.backup_all_btn.clicked.connect(self.backup_all_requested.emit)
 
@@ -134,12 +134,12 @@ class OverviewSyncView(QWidget):
         self.seg_group = QButtonGroup(self)
         self.seg_group.setExclusive(True)
 
-        self.tab_backups_btn = QPushButton("📁  Backup Jobs (0)")
+        self.tab_backups_btn = QPushButton("Backup Jobs (0)")
         self.tab_backups_btn.setCheckable(True)
         self.tab_backups_btn.setChecked(True)
         self.tab_backups_btn.setStyleSheet(self._segment_button_style())
 
-        self.tab_sync_btn = QPushButton("🔄  Multi-PC Sync (0)")
+        self.tab_sync_btn = QPushButton("Multi-PC Sync (0)")
         self.tab_sync_btn.setCheckable(True)
         self.tab_sync_btn.setStyleSheet(self._segment_button_style())
 
@@ -214,11 +214,11 @@ class OverviewSyncView(QWidget):
         self.card_backups.set_value(str(stats.get("total_jobs", 0)))
 
     def update_jobs(self, jobs: list):
-        self.tab_backups_btn.setText(f"📁  Backup Jobs ({len(jobs)})")
+        self.tab_backups_btn.setText(f"Backup Jobs ({len(jobs)})")
         self.view_jobs.set_jobs(jobs)
 
     def update_sync_data(self, datasets: list, devices: list, conflicts_count: int):
-        self.tab_sync_btn.setText(f"🔄  Multi-PC Sync ({len(datasets)})")
+        self.tab_sync_btn.setText(f"Multi-PC Sync ({len(datasets)})")
         self.card_sync.set_value(str(len(datasets)))
         self.card_conflicts.set_value(str(conflicts_count))
         if conflicts_count > 0:

@@ -84,10 +84,10 @@ class StorageView(QWidget):
         header.addLayout(title_box)
         header.addStretch()
 
-        create_btn = QPushButton("➕ Create Bucket")
+        create_btn = QPushButton("+ Create Bucket")
         create_btn.setStyleSheet("padding: 8px 16px; font-weight: 600;")
         create_btn.clicked.connect(self._open_create_bucket)
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setObjectName("secondaryBtn")
         refresh_btn.setStyleSheet("padding: 8px 14px;")
         refresh_btn.clicked.connect(self.refresh_requested.emit)
@@ -108,19 +108,19 @@ class StorageView(QWidget):
         acc_layout.addStretch()
 
         # Cloudflare official link buttons
-        dash_btn = QPushButton("🌐 Open Cloudflare R2")
+        dash_btn = QPushButton("Open Cloudflare R2")
         dash_btn.setObjectName("secondaryBtn")
         dash_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         dash_btn.clicked.connect(self._open_cf_dashboard)
         acc_layout.addWidget(dash_btn)
 
-        tokens_btn = QPushButton("🔑 API Tokens")
+        tokens_btn = QPushButton("API Tokens")
         tokens_btn.setObjectName("secondaryBtn")
         tokens_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         tokens_btn.clicked.connect(self._open_cf_tokens)
         acc_layout.addWidget(tokens_btn)
 
-        billing_btn = QPushButton("💳 Billing & Usage")
+        billing_btn = QPushButton("Billing & Usage")
         billing_btn.setObjectName("secondaryBtn")
         billing_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         billing_btn.clicked.connect(self._open_cf_billing)
@@ -133,7 +133,7 @@ class StorageView(QWidget):
         table_frame.setObjectName("cardWidget")
         t_layout = QVBoxLayout(table_frame)
         t_layout.setSpacing(10)
-        t_title = QLabel("☁️  Your R2 Buckets")
+        t_title = QLabel("Your R2 Buckets")
         t_title.setObjectName("sectionTitleLabel")
         t_layout.addWidget(t_title)
 
@@ -155,7 +155,7 @@ class StorageView(QWidget):
         cost_layout = QVBoxLayout(cost_frame)
         cost_layout.setSpacing(10)
 
-        cost_title = QLabel("💰  Cloudflare R2 Storage & Cost Estimation")
+        cost_title = QLabel("Cloudflare R2 Storage & Cost Estimation")
         cost_title.setObjectName("sectionTitleLabel")
         cost_layout.addWidget(cost_title)
 
@@ -172,10 +172,11 @@ class StorageView(QWidget):
         pricing_notes.setStyleSheet("color: #A58C7D; font-size: 11px; line-height: 1.5;")
         cost_layout.addWidget(pricing_notes)
 
-        cost_link_btn = QPushButton("🌐 View Official Cloudflare R2 Pricing Details ↗")
+        cost_link_btn = QPushButton("View Official Cloudflare R2 Pricing Details ↗")
         cost_link_btn.setObjectName("secondaryBtn")
         cost_link_btn.setStyleSheet("padding: 4px 10px; font-size: 11px; max-width: 320px;")
         cost_link_btn.clicked.connect(lambda: CloudflareR2Client.open_in_browser("https://developers.cloudflare.com/r2/pricing/"))
+        cost_layout.addWidget(cost_link_btn)
         cost_layout.addWidget(cost_link_btn)
 
         main_layout.addWidget(cost_frame)

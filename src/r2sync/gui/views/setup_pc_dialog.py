@@ -57,7 +57,7 @@ class SetupPCDialog(QDialog):
         info_layout = QVBoxLayout(info_card)
         info_layout.setSpacing(4)
 
-        title = QLabel("💻  Set Up Synchronized Folders on This PC")
+        title = QLabel("Set Up Synchronized Folders on This PC")
         title.setStyleSheet("font-size: 16px; font-weight: 600; color: #FFB786;")
         info_layout.addWidget(title)
 
@@ -104,7 +104,7 @@ class SetupPCDialog(QDialog):
         folder_row = QHBoxLayout()
         self.local_input = QLineEdit()
         self.local_input.setPlaceholderText("Select destination folder on this computer")
-        browse_btn = QPushButton("📁 Browse...")
+        browse_btn = QPushButton("Browse...")
         browse_btn.setObjectName("secondaryBtn")
         browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_folder)

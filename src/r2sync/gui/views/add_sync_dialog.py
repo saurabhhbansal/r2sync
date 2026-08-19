@@ -69,7 +69,7 @@ class AddSyncDialog(QDialog):
         info_layout = QVBoxLayout(info_card)
         info_layout.setSpacing(4)
 
-        info_title = QLabel("🔄  Continuous Multi-PC Synchronization")
+        info_title = QLabel("Continuous Multi-PC Synchronization")
         info_title.setStyleSheet("font-weight: 600; color: #FFB786; font-size: 14px;")
         info_layout.addWidget(info_title)
 
@@ -96,7 +96,7 @@ class AddSyncDialog(QDialog):
         self.source_input = QLineEdit()
         self.source_input.setPlaceholderText("Select local folder to synchronize")
         self.source_input.textChanged.connect(self._on_path_changed)
-        browse_btn = QPushButton("📁 Browse...")
+        browse_btn = QPushButton("Browse...")
         browse_btn.setObjectName("secondaryBtn")
         browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_folder)
@@ -117,7 +117,7 @@ class AddSyncDialog(QDialog):
         for b in self.buckets:
             self.bucket_combo.addItem(b)
 
-        new_bucket_btn = QPushButton("➕ New Bucket")
+        new_bucket_btn = QPushButton("+ New Bucket")
         new_bucket_btn.setObjectName("secondaryBtn")
         new_bucket_btn.setStyleSheet("padding: 6px 12px;")
         new_bucket_btn.clicked.connect(self._create_new_bucket)
@@ -220,7 +220,7 @@ class AddSyncDialog(QDialog):
         if path and self.overlap_checker:
             overlaps = self.overlap_checker(path)
             if overlaps:
-                msg = "⚠️ Warning: This folder overlaps with existing jobs:\n• " + "\n• ".join(overlaps)
+                msg = "Warning: This folder overlaps with existing jobs:\n• " + "\n• ".join(overlaps)
                 self.overlap_warn_lbl.setText(msg)
                 self.overlap_warn_lbl.setVisible(True)
             else:

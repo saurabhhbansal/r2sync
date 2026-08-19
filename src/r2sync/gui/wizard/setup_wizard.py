@@ -132,7 +132,7 @@ class R2AuthPage(QWizardPage):
         instr_layout.addWidget(steps)
 
         btn_row = QHBoxLayout()
-        open_cf_btn = QPushButton("🌐 Open Cloudflare R2 Tokens Page")
+        open_cf_btn = QPushButton("Open Cloudflare R2 Tokens Page")
         open_cf_btn.setObjectName("secondaryBtn")
         open_cf_btn.setStyleSheet("padding: 5px 12px; font-size: 12px;")
         open_cf_btn.clicked.connect(lambda: CloudflareR2Client.open_in_browser("https://dash.cloudflare.com/?to=/:account/r2/api-tokens"))
@@ -160,7 +160,7 @@ class R2AuthPage(QWizardPage):
         self.secret_key_input.setPlaceholderText("Secret Access Key (e.g. 4d5e6f...)")
         form.addRow("Secret Access Key:", self.secret_key_input)
 
-        self.test_btn = QPushButton("⚡ Test Connection")
+        self.test_btn = QPushButton("Test Connection")
         self.test_btn.setObjectName("secondaryBtn")
         self.test_btn.setStyleSheet("padding: 6px 12px; font-size: 12px;")
         self.test_btn.clicked.connect(self._run_connection_test)
@@ -200,11 +200,11 @@ class R2AuthPage(QWizardPage):
         self.test_btn.setEnabled(True)
         if res.get("success"):
             lat = res.get("latency_ms", 0)
-            self.status_label.setText(f"<font color='#4AE176'>✓ Connected successfully ({lat}ms)!</font>")
+            self.status_label.setText(f"<font color='#4AE176'>Connected successfully ({lat}ms)</font>")
             self.wizard().discovered_buckets = res.get("buckets", [])
         else:
             err = res.get("error") or res.get("message") or "Unknown error"
-            self.status_label.setText(f"<font color='#FFB4AB'>✗ Connection failed: {err[:80]}</font>")
+            self.status_label.setText(f"<font color='#FFB4AB'>Connection failed: {err[:80]}</font>")
 
 
 class BucketSelectionPage(QWizardPage):
@@ -226,7 +226,7 @@ class BucketSelectionPage(QWizardPage):
         bucket_row = QHBoxLayout()
         self.bucket_combo = QComboBox()
         self.bucket_combo.setEditable(False)
-        self.new_bucket_btn = QPushButton("➕ New Bucket")
+        self.new_bucket_btn = QPushButton("+ New Bucket")
         self.new_bucket_btn.setObjectName("secondaryBtn")
         self.new_bucket_btn.setStyleSheet("padding: 6px 12px;")
         self.new_bucket_btn.clicked.connect(self._create_new_bucket)
@@ -285,7 +285,7 @@ class FirstJobPage(QWizardPage):
         self.path_input.setText(default_docs)
         folder_row.addWidget(self.path_input)
 
-        browse_btn = QPushButton("📁 Browse...")
+        browse_btn = QPushButton("Browse...")
         browse_btn.setObjectName("secondaryBtn")
         browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_folder)

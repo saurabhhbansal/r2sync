@@ -52,7 +52,7 @@ class LogViewerDialog(QDialog):
 
         # Bottom buttons
         btn_row = QHBoxLayout()
-        export_btn = QPushButton("💾 Export Log File...")
+        export_btn = QPushButton("Export Log File...")
         export_btn.setObjectName("secondaryBtn")
         export_btn.clicked.connect(self._export_log)
         close_btn = QPushButton("Close")
@@ -104,7 +104,7 @@ class HistoryView(QWidget):
         header.addLayout(title_box)
         header.addStretch()
 
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setObjectName("secondaryBtn")
         refresh_btn.setStyleSheet("padding: 8px 14px; font-size: 13px;")
         refresh_btn.clicked.connect(self.refresh_requested.emit)
@@ -189,7 +189,7 @@ class HistoryView(QWidget):
         hl_l = QHBoxLayout(self.event_hl_box)
         hl_l.setSpacing(10)
 
-        self.hl_icon = QLabel("✓")
+        self.hl_icon = QLabel("●")
         self.hl_icon.setAlignment(Qt.AlignCenter)
         self.hl_icon.setFixedSize(36, 36)
         self.hl_icon.setStyleSheet("background-color: rgba(74, 225, 118, 0.12); color: #4AE176; border-radius: 18px; font-size: 16px; font-weight: bold;")
@@ -243,7 +243,7 @@ class HistoryView(QWidget):
         drawer_layout.addWidget(self.transfers_table)
 
         # View Log Action Button
-        self.view_log_btn = QPushButton("📄  View Technical Details")
+        self.view_log_btn = QPushButton("View Technical Details")
         self.view_log_btn.setObjectName("secondaryBtn")
         self.view_log_btn.setEnabled(False)
         self.view_log_btn.setStyleSheet("padding: 8px 12px; font-size: 12px;")
@@ -327,11 +327,11 @@ class HistoryView(QWidget):
             self.hl_name.setText(job_name)
 
             if st == "COMPLETED":
-                self.hl_icon.setText("✓")
+                self.hl_icon.setText("●")
                 self.hl_icon.setStyleSheet("background-color: rgba(74, 225, 118, 0.12); color: #4AE176; border-radius: 18px; font-size: 16px; font-weight: bold;")
                 self.hl_sub.setText("Completed successfully")
             elif st == "FAILED":
-                self.hl_icon.setText("✗")
+                self.hl_icon.setText("●")
                 self.hl_icon.setStyleSheet("background-color: rgba(220, 38, 38, 0.15); color: #FFB4AB; border-radius: 18px; font-size: 16px; font-weight: bold;")
                 self.hl_sub.setText("Failed / Execution error")
             else:

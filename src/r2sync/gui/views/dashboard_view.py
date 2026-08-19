@@ -143,7 +143,7 @@ class DashboardView(QWidget):
         hero_layout.setSpacing(16)
 
         # Status Icon Badge
-        self.hero_icon = QLabel("✓")
+        self.hero_icon = QLabel("●")
         self.hero_icon.setAlignment(Qt.AlignCenter)
         self.hero_icon.setFixedSize(42, 42)
         self.hero_icon.setStyleSheet("""
@@ -169,13 +169,13 @@ class DashboardView(QWidget):
         hero_layout.addStretch()
 
         # Action Buttons in Hero
-        self.hero_sync_btn = QPushButton("🔄  Sync Now")
+        self.hero_sync_btn = QPushButton("Sync Now")
         self.hero_sync_btn.setObjectName("secondaryBtn")
         self.hero_sync_btn.setStyleSheet("padding: 8px 16px; font-size: 13px;")
         self.hero_sync_btn.clicked.connect(self.backup_all_requested.emit)
         hero_layout.addWidget(self.hero_sync_btn)
 
-        self.hero_add_btn = QPushButton("➕ Add Backup")
+        self.hero_add_btn = QPushButton("+ Add Backup")
         self.hero_add_btn.setStyleSheet("padding: 8px 16px; font-size: 13px;")
         self.hero_add_btn.clicked.connect(self.new_job_requested.emit)
         hero_layout.addWidget(self.hero_add_btn)
@@ -215,7 +215,7 @@ class DashboardView(QWidget):
         act_layout.setSpacing(12)
 
         act_header = QHBoxLayout()
-        act_title = QLabel("📜  Recent Activity")
+        act_title = QLabel("Recent Activity")
         act_title.setObjectName("sectionTitleLabel")
         act_header.addWidget(act_title)
         act_header.addStretch()
@@ -244,7 +244,7 @@ class DashboardView(QWidget):
         upcoming_layout = QVBoxLayout(upcoming_frame)
         upcoming_layout.setSpacing(12)
 
-        up_title = QLabel("⏰  Upcoming Schedules")
+        up_title = QLabel("Upcoming Schedules")
         up_title.setObjectName("sectionTitleLabel")
         upcoming_layout.addWidget(up_title)
 
@@ -300,7 +300,7 @@ class DashboardView(QWidget):
             activity_text = "Ready to back up."
 
         if unresolved_conflicts > 0:
-            self.hero_icon.setText("⚠️")
+            self.hero_icon.setText("●")
             self.hero_icon.setStyleSheet("""
                 background-color: rgba(246, 130, 31, 0.15);
                 color: #F6821F;
@@ -311,7 +311,7 @@ class DashboardView(QWidget):
             self.hero_title.setText("Conflicts Detected")
             self.hero_subtitle.setText(f"{unresolved_conflicts} unresolved conflict(s) require review. {total_jobs} jobs, {total_sync} sync folders.")
         else:
-            self.hero_icon.setText("✓")
+            self.hero_icon.setText("●")
             self.hero_icon.setStyleSheet("""
                 background-color: rgba(74, 225, 118, 0.12);
                 color: #4AE176;

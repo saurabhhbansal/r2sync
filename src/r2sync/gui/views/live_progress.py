@@ -40,7 +40,7 @@ class LiveProgressWidget(QFrame):
 
         # Header row
         header_row = QHBoxLayout()
-        self.title_label = QLabel("⚡ Syncing in Progress...")
+        self.title_label = QLabel("Sync in Progress...")
         self.title_label.setStyleSheet("font-weight: 600; color: #FFB786; font-size: 14px;")
         header_row.addWidget(self.title_label)
         header_row.addStretch()

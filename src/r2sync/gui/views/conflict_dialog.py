@@ -42,10 +42,6 @@ class ConflictCardWidget(QFrame):
 
         # Header Row: File Name & Badge
         header_row = QHBoxLayout()
-        icon_lbl = QLabel("⚠️")
-        icon_lbl.setStyleSheet("font-size: 18px;")
-        header_row.addWidget(icon_lbl)
-
         rel_path = self.conflict.get("relative_path", "Unknown file")
         file_name = os.path.basename(rel_path)
         title_lbl = QLabel(f"<b>{file_name}</b> <font color='#A58C7D'>({rel_path})</font>")
@@ -53,7 +49,7 @@ class ConflictCardWidget(QFrame):
         header_row.addWidget(title_lbl)
         header_row.addStretch()
 
-        open_folder_btn = QPushButton("📁 Open Folder")
+        open_folder_btn = QPushButton("Open Folder")
         open_folder_btn.setObjectName("secondaryBtn")
         open_folder_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         open_folder_btn.clicked.connect(self._open_folder)
@@ -70,7 +66,7 @@ class ConflictCardWidget(QFrame):
         # Left Column: Local Version
         local_col = QVBoxLayout()
         local_col.setSpacing(4)
-        local_title = QLabel(f"<b>🖥️ {self.current_device_name} (Local Version)</b>")
+        local_title = QLabel(f"<b>{self.current_device_name} (Local Version)</b>")
         local_title.setStyleSheet("color: #FFB786; font-size: 12px;")
         local_col.addWidget(local_title)
 
@@ -101,7 +97,7 @@ class ConflictCardWidget(QFrame):
         remote_col = QVBoxLayout()
         remote_col.setSpacing(4)
         remote_dev = self.conflict.get("remote_device_name") or "Connected Computer"
-        remote_title = QLabel(f"<b>☁️ {remote_dev} (Remote Version)</b>")
+        remote_title = QLabel(f"<b>{remote_dev} (Remote Version)</b>")
         remote_title.setStyleSheet("color: #F6821F; font-size: 12px;")
         remote_col.addWidget(remote_title)
 
@@ -206,7 +202,7 @@ class ConflictCenterDialog(QDialog):
         hl = QVBoxLayout(header_card)
 
         count = len(self.conflicts)
-        title = QLabel(f"⚠️ Conflict Center — {count} Unresolved Conflict{'s' if count != 1 else ''}")
+        title = QLabel(f"Conflict Center — {count} Unresolved Conflict{'s' if count != 1 else ''}")
         title.setStyleSheet("font-size: 16px; font-weight: 600; color: #E1E2E8;")
         hl.addWidget(title)
 
@@ -252,7 +248,7 @@ class ConflictCenterDialog(QDialog):
                 item.widget().deleteLater()
 
         if not self.conflicts:
-            empty_lbl = QLabel("✓ No unresolved conflicts! All files are synchronized.")
+            empty_lbl = QLabel("No unresolved conflicts. All files are synchronized.")
             empty_lbl.setAlignment(Qt.AlignCenter)
             empty_lbl.setStyleSheet("color: #4AE176; font-size: 14px; padding: 40px;")
             self.cards_layout.insertWidget(0, empty_lbl)

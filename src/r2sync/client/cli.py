@@ -50,12 +50,12 @@ def main() -> int:
         print(f"Checking for updates (current version: v{APP_VERSION})...")
         info = AutoUpdater.check_for_updates()
         if info.available:
-            print(f"🚀 New version available: v{info.latest_version} ({info.release_name})")
+            print(f"New version available: v{info.latest_version} ({info.release_name})")
             print(f"Release URL: {info.html_url}")
             if info.download_url:
                 print(f"Download URL: {info.download_url}")
         else:
-            print(f"✓ You are already on the latest version of r2sync (v{APP_VERSION}).")
+            print(f"You are already on the latest version of r2sync (v{APP_VERSION}).")
         return 0
 
     client = IPCClient()

@@ -62,7 +62,7 @@ class ManageDevicesDialog(QDialog):
         """)
         hl = QVBoxLayout(header_card)
 
-        title = QLabel(f"🖥️ Connected Computers — {self.dataset_name}")
+        title = QLabel(f"Connected Computers — {self.dataset_name}")
         title.setStyleSheet("font-size: 16px; font-weight: 600; color: #E1E2E8;")
         hl.addWidget(title)
 
@@ -88,7 +88,7 @@ class ManageDevicesDialog(QDialog):
         btn_row_top.addStretch()
 
         if self.refresh_cb:
-            refresh_btn = QPushButton("🔄 Refresh Devices")
+            refresh_btn = QPushButton("Refresh Devices")
             refresh_btn.setObjectName("secondaryBtn")
             refresh_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
             refresh_btn.clicked.connect(self._on_refresh)
@@ -114,7 +114,7 @@ class ManageDevicesDialog(QDialog):
         # Bottom Buttons
         btn_layout = QHBoxLayout()
 
-        self.remove_btn = QPushButton("🗑 Remove Selected Computer")
+        self.remove_btn = QPushButton("Remove Selected Computer")
         self.remove_btn.setObjectName("dangerBtn")
         self.remove_btn.setEnabled(False)
         self.remove_btn.setStyleSheet("padding: 8px 16px;")

@@ -80,7 +80,7 @@ class SystemTrayManager(QSystemTrayIcon):
         open_action.triggered.connect(self.open_window_requested.emit)
         menu.addAction(open_action)
 
-        backup_all_action = QAction("⚡ Backup All Now", menu)
+        backup_all_action = QAction("Backup All Now", menu)
         backup_all_action.triggered.connect(self.backup_all_requested.emit)
         menu.addAction(backup_all_action)
 

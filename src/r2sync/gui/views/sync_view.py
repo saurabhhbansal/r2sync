@@ -48,22 +48,6 @@ class DatasetCardWidget(QFrame):
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
 
-        # Folder Shared Icon
-        icon_box = QFrame()
-        icon_box.setFixedSize(36, 36)
-        icon_box.setStyleSheet("""
-            background-color: #111418;
-            border: 1px solid #272A2E;
-            border-radius: 8px;
-        """)
-        icon_l = QVBoxLayout(icon_box)
-        icon_l.setContentsMargins(0, 0, 0, 0)
-        icon_l.setAlignment(Qt.AlignCenter)
-        icon_lbl = QLabel("🔄")
-        icon_lbl.setStyleSheet("font-size: 16px;")
-        icon_l.addWidget(icon_lbl)
-        top_row.addWidget(icon_box)
-
         # Title & Status Subtitle
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
@@ -88,7 +72,7 @@ class DatasetCardWidget(QFrame):
             status_lbl.setText("● Syncing")
             status_lbl.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 600;")
         elif status == "conflict":
-            status_lbl.setText("⚠️ Conflict Detected")
+            status_lbl.setText("● Conflict Detected")
             status_lbl.setStyleSheet("color: #F6821F; font-size: 11px; font-weight: 600;")
         else:
             status_lbl.setText(f"● {status.title()}")
@@ -113,9 +97,9 @@ class DatasetCardWidget(QFrame):
         top_row.addStretch()
 
         # Action Buttons
-        sync_btn = QPushButton("▶ Sync")
+        sync_btn = QPushButton("Sync")
         sync_btn.setObjectName("secondaryBtn")
-        sync_btn.setStyleSheet("padding: 5px 10px; font-size: 12px; font-weight: 500;")
+        sync_btn.setStyleSheet("padding: 5px 12px; font-size: 12px; font-weight: 500;")
         sync_btn.clicked.connect(lambda: self.sync_now_clicked.emit(self.dataset_id))
         top_row.addWidget(sync_btn)
 
@@ -125,13 +109,13 @@ class DatasetCardWidget(QFrame):
         pause_btn.clicked.connect(lambda: self.pause_toggle_clicked.emit(self.dataset_id, not paused))
         top_row.addWidget(pause_btn)
 
-        comp_btn = QPushButton("🖥️ Devices")
+        comp_btn = QPushButton("Devices")
         comp_btn.setObjectName("secondaryBtn")
         comp_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         comp_btn.clicked.connect(lambda: self.manage_computers_clicked.emit(self.dataset_id))
         top_row.addWidget(comp_btn)
 
-        del_btn = QPushButton("🗑")
+        del_btn = QPushButton("Delete")
         del_btn.setObjectName("dangerBtn")
         del_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         del_btn.clicked.connect(lambda: self.delete_clicked.emit(self.dataset_id))
@@ -209,7 +193,7 @@ class DatasetCardWidget(QFrame):
         else:
             sz_str = f"{round(sz / 1024, 1)} KB"
 
-        files_lbl = QLabel(f"📊  {cnt:,} files ({sz_str})")
+        files_lbl = QLabel(f"{cnt:,} files ({sz_str})")
         files_lbl.setStyleSheet("color: #A58C7D; font-size: 12px;")
         meta_row.addWidget(files_lbl)
 
@@ -221,7 +205,7 @@ class DatasetCardWidget(QFrame):
         else:
             sched_str = sched
 
-        sched_lbl = QLabel(f"⏰  {sched_str}")
+        sched_lbl = QLabel(sched_str)
         sched_lbl.setStyleSheet("color: #A58C7D; font-size: 12px;")
         meta_row.addWidget(sched_lbl)
         meta_row.addStretch()
@@ -291,19 +275,19 @@ class SyncView(QWidget):
         header.addLayout(title_box)
         header.addStretch()
 
-        self.conflicts_btn = QPushButton("⚠️ Conflicts (0)")
+        self.conflicts_btn = QPushButton("Conflicts (0)")
         self.conflicts_btn.setObjectName("secondaryBtn")
         self.conflicts_btn.setStyleSheet("padding: 8px 14px; font-size: 13px;")
         self.conflicts_btn.clicked.connect(lambda: self.open_conflicts_requested.emit(""))
         header.addWidget(self.conflicts_btn)
 
-        setup_btn = QPushButton("💻 Set Up This PC")
+        setup_btn = QPushButton("Set Up This PC")
         setup_btn.setObjectName("secondaryBtn")
         setup_btn.setStyleSheet("padding: 8px 14px; font-size: 13px;")
         setup_btn.clicked.connect(self.setup_pc_requested.emit)
         header.addWidget(setup_btn)
 
-        add_btn = QPushButton("➕ Add Sync Folder")
+        add_btn = QPushButton("+ Add Sync Folder")
         add_btn.setStyleSheet("padding: 8px 16px; font-size: 13px; font-weight: 600;")
         add_btn.clicked.connect(self.add_sync_requested.emit)
         header.addWidget(add_btn)
@@ -326,7 +310,7 @@ class SyncView(QWidget):
         dev_layout = QHBoxLayout(self.devices_frame)
         dev_layout.setSpacing(12)
 
-        hub_lbl = QLabel("☁️ Cloudflare R2")
+        hub_lbl = QLabel("Cloudflare R2")
         hub_lbl.setStyleSheet("color: #FFB786; font-weight: 600; font-size: 12px; background-color: #111418; padding: 4px 10px; border-radius: 6px; border: 1px solid #323539;")
         dev_layout.addWidget(hub_lbl)
 
@@ -339,7 +323,7 @@ class SyncView(QWidget):
         dev_layout.addWidget(self.devices_summary_lbl)
         dev_layout.addStretch()
 
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setObjectName("secondaryBtn")
         refresh_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         refresh_btn.clicked.connect(self.refresh_requested.emit)
@@ -390,7 +374,7 @@ class SyncView(QWidget):
 
         # Update Conflicts Button
         if conflicts_count > 0:
-            self.conflicts_btn.setText(f"⚠️ Conflicts ({conflicts_count})")
+            self.conflicts_btn.setText(f"Conflicts ({conflicts_count})")
             self.conflicts_btn.setStyleSheet("""
                 background-color: rgba(246, 130, 31, 0.15);
                 color: #FFB786;
@@ -400,7 +384,7 @@ class SyncView(QWidget):
                 font-weight: 600;
             """)
         else:
-            self.conflicts_btn.setText("✓ 0 Conflicts")
+            self.conflicts_btn.setText("0 Conflicts")
             self.conflicts_btn.setStyleSheet("padding: 8px 14px; font-size: 13px;")
 
         # Populate Cards
@@ -416,7 +400,7 @@ class SyncView(QWidget):
             el.setAlignment(Qt.AlignCenter)
             el.setSpacing(12)
 
-            lbl1 = QLabel("🔄 Multi-PC Cloud Synchronization")
+            lbl1 = QLabel("Multi-PC Cloud Synchronization")
             lbl1.setStyleSheet("font-size: 16px; font-weight: 600; color: #E1E2E8;")
             lbl2 = QLabel(
                 "Keep folders continuously synchronized between your desktop, laptop, and work computers.\n"
@@ -426,10 +410,10 @@ class SyncView(QWidget):
             lbl2.setStyleSheet("color: #A58C7D; font-size: 13px; max-width: 500px;")
 
             btn_row = QHBoxLayout()
-            btn1 = QPushButton("➕ Add Sync Folder")
+            btn1 = QPushButton("+ Add Sync Folder")
             btn1.setStyleSheet("padding: 8px 16px; font-weight: 600;")
             btn1.clicked.connect(self.add_sync_requested.emit)
-            btn2 = QPushButton("💻 Connect to Existing Dataset")
+            btn2 = QPushButton("Connect to Existing Dataset")
             btn2.setObjectName("secondaryBtn")
             btn2.setStyleSheet("padding: 8px 16px;")
             btn2.clicked.connect(self.setup_pc_requested.emit)
