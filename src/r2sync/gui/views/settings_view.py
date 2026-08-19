@@ -1,4 +1,4 @@
-"""Settings view for configuring credentials, background service, and app preferences."""
+"""Settings view for configuring credentials, background service, and preferences matching Stitch Design."""
 
 import sys
 from PySide6.QtCore import Qt, Signal
@@ -29,7 +29,7 @@ from r2sync.utils.system import get_windows_autostart, set_windows_autostart
 
 
 class SettingsView(QWidget):
-    """Application Settings View."""
+    """Application Settings View matching Stitch Design."""
 
     theme_changed = Signal(str)
     credentials_saved = Signal()
@@ -37,7 +37,6 @@ class SettingsView(QWidget):
     restart_service_requested = Signal()
     download_rclone_requested = Signal()
     test_connection_requested = Signal(str, str, str)
-
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -52,6 +51,7 @@ class SettingsView(QWidget):
         # Header
         header = QHBoxLayout()
         title_box = QVBoxLayout()
+        title_box.setSpacing(2)
         title = QLabel("Settings")
         title.setObjectName("titleLabel")
         subtitle = QLabel("Configure Cloudflare credentials, background service, and app preferences")
@@ -74,7 +74,7 @@ class SettingsView(QWidget):
         # 1. Cloudflare Credentials Group
         creds_group = QGroupBox("Cloudflare R2 Credentials")
         creds_layout = QFormLayout(creds_group)
-        creds_layout.setSpacing(10)
+        creds_layout.setSpacing(12)
 
         self.account_id_input = QLineEdit()
         self.account_id_input.setPlaceholderText("Cloudflare Account ID")
@@ -84,7 +84,7 @@ class SettingsView(QWidget):
         self.access_key_input.setPlaceholderText("Access Key ID")
         creds_layout.addRow("Access Key ID:", self.access_key_input)
 
-        self.account_status_label = QLabel("<font color='#94A3B8'>● Not Configured</font>")
+        self.account_status_label = QLabel("<font color='#A58C7D'>● Not Configured</font>")
         creds_layout.addRow("Connection Status:", self.account_status_label)
 
         secret_row = QHBoxLayout()
@@ -116,9 +116,9 @@ class SettingsView(QWidget):
         # 2. Background Service & Engine Group
         svc_group = QGroupBox("Background Engine & Service")
         svc_layout = QFormLayout(svc_group)
-        svc_layout.setSpacing(10)
+        svc_layout.setSpacing(12)
 
-        self.svc_status_label = QLabel("<font color='#10B981'>● Background Service Active</font>")
+        self.svc_status_label = QLabel("<font color='#4AE176'>● Background Service Active</font>")
         svc_layout.addRow("Service Status:", self.svc_status_label)
 
         self.rclone_status_label = QLabel("Detecting...")
@@ -127,7 +127,7 @@ class SettingsView(QWidget):
         self.redetect_rclone_btn = QPushButton("🔄 Re-detect")
         self.redetect_rclone_btn.setObjectName("secondaryBtn")
         self.redetect_rclone_btn.clicked.connect(self._check_rclone)
-        self.download_rclone_btn = QPushButton("⬇ Download / Re-install")
+        self.download_rclone_btn = QPushButton("⬇ Download Engine")
         self.download_rclone_btn.setObjectName("secondaryBtn")
         self.download_rclone_btn.clicked.connect(self.download_rclone_requested.emit)
         rclone_row.addWidget(self.redetect_rclone_btn)
@@ -140,7 +140,7 @@ class SettingsView(QWidget):
         # 3. Device Identity (Multi-PC Synchronization) Group
         dev_group = QGroupBox("Computer & Device Identity")
         dev_layout = QFormLayout(dev_group)
-        dev_layout.setSpacing(10)
+        dev_layout.setSpacing(12)
 
         dev_row = QHBoxLayout()
         self.device_name_input = QLineEdit()
@@ -153,7 +153,7 @@ class SettingsView(QWidget):
         dev_layout.addRow("Computer Name:", dev_row)
 
         dev_note = QLabel("This name identifies this PC across your shared Multi-PC sync folders.")
-        dev_note.setStyleSheet("color: #64748B; font-size: 11px;")
+        dev_note.setStyleSheet("color: #A58C7D; font-size: 11px;")
         dev_layout.addRow("", dev_note)
 
         layout.addWidget(dev_group)
@@ -161,7 +161,7 @@ class SettingsView(QWidget):
         # 4. Preferences Group
         pref_group = QGroupBox("Application Preferences")
         pref_layout = QFormLayout(pref_group)
-        pref_layout.setSpacing(10)
+        pref_layout.setSpacing(12)
 
         self.autostart_cb = QCheckBox("Start r2sync automatically with Windows (minimized to tray)")
         self.autostart_cb.setChecked(get_windows_autostart(APP_DISPLAY_NAME))
@@ -169,7 +169,7 @@ class SettingsView(QWidget):
         pref_layout.addRow("Autostart:", self.autostart_cb)
 
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Dark Theme", "Light Theme"])
+        self.theme_combo.addItems(["Dark Theme (R2Sync Pro Dark)", "Light Theme"])
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         pref_layout.addRow("Color Theme:", self.theme_combo)
 
@@ -181,16 +181,15 @@ class SettingsView(QWidget):
         about_layout.setSpacing(8)
 
         ver_lbl = QLabel(f"<b>{APP_DISPLAY_NAME} v{APP_VERSION}</b> — Cloudflare R2 Backup & Multi-PC Sync")
-        ver_lbl.setStyleSheet("color: #FFFFFF;")
+        ver_lbl.setStyleSheet("color: #E1E2E8;")
         about_layout.addWidget(ver_lbl)
 
         license_lbl = QLabel("Licensed under the MIT License. Zero telemetry, zero proprietary server dependencies.")
-        license_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        license_lbl.setStyleSheet("color: #A58C7D; font-size: 12px;")
         about_layout.addWidget(license_lbl)
 
         layout.addWidget(about_group)
         layout.addStretch()
-
 
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
@@ -202,14 +201,15 @@ class SettingsView(QWidget):
             self.access_key_input.setText(creds.access_key_id)
             self.secret_key_input.setText(creds.secret_access_key)
             masked = f"{creds.account_id[:6]}••••••••{creds.account_id[-4:]}" if len(creds.account_id) > 10 else creds.account_id
-            self.account_status_label.setText(f"<font color='#10B981'>● Connected ({masked})</font>")
+            self.account_status_label.setText(f"<font color='#4AE176'>● Connected ({masked})</font>")
         else:
-            self.account_status_label.setText("<font color='#94A3B8'>● Not Configured</font>")
+            self.account_status_label.setText("<font color='#A58C7D'>● Not Configured</font>")
         self._check_rclone()
 
     def _check_rclone(self):
         try:
             from r2sync.core.rclone_engine import RcloneBinaryManager
+
             installed = RcloneBinaryManager.is_installed()
             ver = RcloneBinaryManager.get_version() if installed else "Not installed"
             self.set_rclone_status(installed, ver)
@@ -271,13 +271,12 @@ class SettingsView(QWidget):
 
     def set_rclone_status(self, installed: bool, version: str):
         if installed:
-            self.rclone_status_label.setText(f"<font color='#10B981'>✓ Installed ({version})</font>")
+            self.rclone_status_label.setText(f"<font color='#4AE176'>✓ Installed ({version})</font>")
         else:
-            self.rclone_status_label.setText("<font color='#EF4444'>✗ Missing binary</font>")
+            self.rclone_status_label.setText("<font color='#FFB4AB'>✗ Missing binary</font>")
 
     def set_service_status(self, active: bool):
         if active:
-            self.svc_status_label.setText("<font color='#10B981'>● Background Service Active</font>")
+            self.svc_status_label.setText("<font color='#4AE176'>● Background Service Active</font>")
         else:
-            self.svc_status_label.setText("<font color='#EF4444'>● Background Service Offline</font>")
-
+            self.svc_status_label.setText("<font color='#FFB4AB'>● Background Service Offline</font>")

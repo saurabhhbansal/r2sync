@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>r2sync - Multi-PC Sync</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "on-tertiary-fixed-variant": "#005321",
+                "on-primary-fixed-variant": "#723600",
+                "surface-container-high": "#272a2e",
+                "outline-variant": "#564336",
+                "primary-fixed": "#ffdcc6",
+                "surface-container-highest": "#323539",
+                "on-secondary-fixed": "#191c20",
+                "tertiary-container": "#02ba55",
+                "surface-tint": "#ffb786",
+                "orange-gradient-end": "#FFB786",
+                "on-primary": "#502400",
+                "secondary": "#c4c6cb",
+                "on-tertiary-container": "#004219",
+                "tertiary-fixed": "#6bff8f",
+                "on-surface-variant": "#ddc1b0",
+                "tertiary": "#4ae176",
+                "on-secondary-container": "#babcc1",
+                "error": "#ffb4ab",
+                "surface-bright": "#36393E",
+                "primary-container": "#f6821f",
+                "secondary-fixed-dim": "#c4c6cb",
+                "on-error": "#690005",
+                "inverse-on-surface": "#2e3135",
+                "surface-dim": "#111418",
+                "on-tertiary": "#003915",
+                "secondary-fixed": "#e1e2e8",
+                "on-primary-container": "#5b2a00",
+                "outline": "#a58c7d",
+                "tertiary-fixed-dim": "#4ae176",
+                "primary": "#ffb786",
+                "surface-container": "#1d2024",
+                "on-error-container": "#ffdad6",
+                "on-secondary-fixed-variant": "#44474b",
+                "surface-container-lowest": "#0b0e12",
+                "on-background": "#e1e2e8",
+                "background": "#111418",
+                "primary-fixed-dim": "#ffb786",
+                "on-primary-fixed": "#311300",
+                "surface": "#111418",
+                "on-secondary": "#2e3135",
+                "secondary-container": "#494c50",
+                "error-container": "#93000a",
+                "on-tertiary-fixed": "#002109",
+                "surface-variant": "#323539",
+                "surface-container-low": "#191c20",
+                "on-surface": "#e1e2e8",
+                "inverse-surface": "#e1e2e8",
+                "inverse-primary": "#964900"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "container-padding": "24px",
+                "element-gap": "12px",
+                "margin-sm": "16px",
+                "margin-md": "24px",
+                "unit": "4px",
+                "list-item-gap": "8px",
+                "sidebar-width": "260px"
+        },
+        "fontFamily": {
+                "metric": [
+                        "Inter"
+                ],
+                "body-md": [
+                        "Inter"
+                ],
+                "label": [
+                        "Inter"
+                ],
+                "page-title": [
+                        "Inter"
+                ],
+                "section-title": [
+                        "Inter"
+                ],
+                "body-sm": [
+                        "Inter"
+                ],
+                "caption": [
+                        "Inter"
+                ]
+        },
+        "fontSize": {
+                "metric": [
+                        "32px",
+                        {
+                                "lineHeight": "40px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label": [
+                        "12px",
+                        {
+                                "lineHeight": "16px",
+                                "fontWeight": "500"
+                        }
+                ],
+                "page-title": [
+                        "24px",
+                        {
+                                "lineHeight": "32px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "section-title": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-sm": [
+                        "13px",
+                        {
+                                "lineHeight": "18px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "caption": [
+                        "11px",
+                        {
+                                "lineHeight": "14px",
+                                "fontWeight": "400"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .icon-fill {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen flex overflow-hidden antialiased selection:bg-primary-container selection:text-white">
+<!-- SideNavBar (Desktop) -->
+<nav aria-label="Sidebar Navigation" class="hidden md:flex flex-col h-full py-margin-md bg-surface-container-low border-r border-outline-variant w-64 flex-shrink-0 z-10">
+<!-- Header -->
+<div class="px-margin-md mb-margin-lg">
+<div class="flex items-center gap-3">
+<img alt="R2Sync Logo" class="h-10 w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD69VwyDV1-Nq0Ncqo0Fjb371i__BFxenK1V5rr6GlfRJxpr85x5oN1HNo97m1U8vdCOum1s8IB45bFiioGVN-J-mn8Md7ywePE3fLboMKma3fTy5vIihreQsJ93rEtZCGRDqWDKd1UmOUEtwQeKX0SYBTmWPljPUw2VWgh4JA8-hxpPCD7PtCp0XFuwLYcODEYiNl63hB9kNayYQPgzK8rmsoSccAdfmigixV7s-mAMxJ0ip3RqnclnTh89C-DB2TNyA"/>
+<div>
+<h1 class="text-page-title font-page-title text-primary tracking-tight">r2sync</h1>
+<span class="text-caption font-caption text-on-surface-variant">v1.0</span>
+</div>
+</div>
+</div>
+<!-- Main Navigation -->
+<div class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary transition-colors">dashboard</span>
+<span class="font-label text-label">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary transition-colors">backup</span>
+<span class="font-label text-label">Backups</span>
+</a>
+<a aria-current="page" class="flex items-center gap-3 px-3 py-2 rounded-lg text-primary font-semibold border-r-2 border-primary bg-surface-variant opacity-90 transition-opacity" href="#">
+<span class="material-symbols-outlined text-xl text-primary icon-fill">sync_alt</span>
+<span class="font-label text-label">Multi-PC Sync</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary transition-colors">list_alt</span>
+<span class="font-label text-label">Activity</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary transition-colors">cloud</span>
+<span class="font-label text-label">Storage</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary transition-colors">settings</span>
+<span class="font-label text-label">Settings</span>
+</a>
+</div>
+<!-- Footer System Status -->
+<div class="px-margin-md mt-auto pt-4 border-t border-outline-variant/30">
+<div class="flex items-center gap-2 text-tertiary-container">
+<span class="material-symbols-outlined text-sm icon-fill">check_circle</span>
+<span class="font-caption text-caption">Everything is healthy</span>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
+<!-- TopAppBar (Mobile & Global Actions) -->
+<header class="h-16 w-full flex justify-between items-center px-margin-lg bg-surface border-b border-outline-variant shrink-0 z-10">
+<!-- Mobile Brand (Hidden on Desktop) -->
+<div class="md:hidden flex items-center gap-2">
+<span class="text-page-title font-page-title text-primary">r2sync</span>
+</div>
+<div class="hidden md:block">
+<!-- Spacer for Desktop to push actions right -->
+</div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-4">
+<button aria-label="Conflicts" class="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors active:scale-95 group relative">
+<span class="material-symbols-outlined group-hover:icon-fill transition-all">warning</span>
+<span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-error-container"></span>
+</button>
+<button aria-label="Notifications" class="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors active:scale-95 group">
+<span class="material-symbols-outlined group-hover:icon-fill transition-all">notifications</span>
+</button>
+<button aria-label="Help" class="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors active:scale-95 group">
+<span class="material-symbols-outlined group-hover:icon-fill transition-all">help_outline</span>
+</button>
+</div>
+</header>
+<!-- Page Canvas -->
+<div class="flex-1 overflow-y-auto p-container-padding pb-32">
+<div class="max-w-5xl mx-auto space-y-margin-lg">
+<!-- Page Header & Actions -->
+<div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
+<div>
+<h2 class="font-page-title text-page-title text-on-surface tracking-tight mb-2">Multi-PC Sync</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Keep the same files up to date across your computers.</p>
+</div>
+<div class="flex flex-wrap items-center gap-3">
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-variant border border-outline-variant text-on-surface rounded-lg hover:bg-surface-bright hover:border-outline transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-sm text-error-container">warning</span>
+                            Conflicts (2)
+                        </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-variant border border-outline-variant text-on-surface rounded-lg hover:bg-surface-bright hover:border-outline transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-sm">computer</span>
+                            Set Up This PC
+                        </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary-container text-white rounded-lg hover:bg-primary hover:text-on-primary-container transition-colors text-sm font-medium shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
+<span class="material-symbols-outlined text-sm">add</span>
+                            Add Sync Folder
+                        </button>
+</div>
+</div>
+<!-- Sync Dataset Bento Grid -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-element-gap">
+<!-- Main Sync Card: Shared Documents -->
+<div class="xl:col-span-12 bg-surface-container rounded-xl border border-outline-variant/50 overflow-hidden relative group hover:border-outline-variant transition-colors">
+<!-- Top Bar Status -->
+<div class="px-6 py-4 flex items-center justify-between border-b border-outline-variant/30 bg-surface-container-low">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-surface border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">folder_shared</span>
+</div>
+<div>
+<h3 class="font-section-title text-section-title text-on-surface">Shared Documents</h3>
+<div class="flex items-center gap-2 mt-0.5">
+<span class="w-2 h-2 rounded-full bg-tertiary-container"></span>
+<span class="font-label text-label text-tertiary-container">Synced</span>
+<span class="font-caption text-caption text-on-surface-variant ml-2">• Just now</span>
+</div>
+</div>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center gap-2">
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded-md transition-colors" title="Sync Now">
+<span class="material-symbols-outlined text-sm">sync</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded-md transition-colors" title="Pause">
+<span class="material-symbols-outlined text-sm">pause</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded-md transition-colors" title="More">
+<span class="material-symbols-outlined text-sm">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card Body: Topology & Details -->
+<div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-gradient-to-br from-surface-container to-surface">
+<!-- Left Details -->
+<div class="space-y-6">
+<div class="space-y-4">
+<div>
+<p class="font-label text-label text-on-surface-variant mb-1 uppercase tracking-wider text-[10px]">Local Path</p>
+<div class="flex items-center gap-2 bg-surface-container-lowest px-3 py-2 rounded-md border border-outline-variant/30">
+<span class="material-symbols-outlined text-sm text-on-surface-variant">folder</span>
+<code class="font-mono text-sm text-on-surface truncate">C:\Users\Saurabh\Documents</code>
+</div>
+</div>
+<div>
+<p class="font-label text-label text-on-surface-variant mb-1 uppercase tracking-wider text-[10px]">Remote Target</p>
+<div class="flex items-center gap-2 bg-surface-container-lowest px-3 py-2 rounded-md border border-outline-variant/30">
+<span class="material-symbols-outlined text-sm text-primary">cloud</span>
+<code class="font-mono text-sm text-on-surface truncate">Cloudflare R2 (backups/shared-documents)</code>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Network Topology Vis -->
+<div class="relative h-48 border border-outline-variant/20 rounded-lg bg-surface-container-lowest overflow-hidden flex items-center justify-center p-4">
+<!-- Abstract nodes connecting via SVG lines -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none opacity-40" preserveaspectratio="none">
+<!-- Cloud to Desktop -->
+<path class="text-tertiary-container" d="M 50% 30% Q 25% 50% 20% 70%" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1.5"></path>
+<!-- Cloud to Laptop -->
+<path class="text-tertiary-container" d="M 50% 30% Q 50% 50% 50% 70%" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1.5"></path>
+<!-- Cloud to Work PC -->
+<path class="text-outline-variant" d="M 50% 30% Q 75% 50% 80% 70%" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1.5"></path>
+</svg>
+<div class="w-full max-w-sm relative z-10 flex flex-col items-center gap-8">
+<!-- Hub: R2 Cloud -->
+<div class="flex flex-col items-center gap-2 bg-surface-container px-4 py-2 rounded-full border border-primary/30 shadow-[0_0_15px_rgba(246,130,31,0.1)]">
+<span class="material-symbols-outlined text-primary text-xl">cloud</span>
+<span class="font-label text-label text-on-surface text-[10px]">Cloudflare R2</span>
+</div>
+<!-- Spoke Devices -->
+<div class="flex justify-between w-full px-4">
+<!-- Desktop -->
+<div class="flex flex-col items-center gap-2">
+<div class="relative">
+<div class="w-10 h-10 rounded-lg bg-surface-variant flex items-center justify-center border border-tertiary-container">
+<span class="material-symbols-outlined text-on-surface">computer</span>
+</div>
+<div class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-tertiary-container border-2 border-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px] text-on-tertiary-container font-bold icon-fill">check</span>
+</div>
+</div>
+<span class="font-caption text-caption text-on-surface-variant">Desktop-PC</span>
+</div>
+<!-- Laptop -->
+<div class="flex flex-col items-center gap-2">
+<div class="relative">
+<div class="w-10 h-10 rounded-lg bg-surface-variant flex items-center justify-center border border-tertiary-container">
+<span class="material-symbols-outlined text-on-surface">laptop_mac</span>
+</div>
+<div class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-tertiary-container border-2 border-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px] text-on-tertiary-container font-bold icon-fill">check</span>
+</div>
+</div>
+<span class="font-caption text-caption text-on-surface-variant">Laptop</span>
+</div>
+<!-- Work PC (Offline/Not Synced) -->
+<div class="flex flex-col items-center gap-2 opacity-60">
+<div class="relative">
+<div class="w-10 h-10 rounded-lg bg-surface-variant flex items-center justify-center border border-outline-variant border-dashed">
+<span class="material-symbols-outlined text-on-surface-variant">desktop_windows</span>
+</div>
+<div class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-variant border border-outline-variant flex items-center justify-center">
+<!-- Empty circle indicates offline/pending -->
+</div>
+</div>
+<span class="font-caption text-caption text-on-surface-variant">Work PC</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Progress Bar (Subtle) -->
+<div class="absolute bottom-0 left-0 w-full h-1 bg-surface-variant">
+<div class="h-full bg-tertiary-container w-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

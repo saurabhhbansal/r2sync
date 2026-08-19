@@ -1,4 +1,4 @@
-"""Main Window and Application Controller for r2sync GUI."""
+"""Main Window and Application Controller for r2sync GUI matching Stitch Design."""
 
 import logging
 import sys
@@ -46,16 +46,16 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    """Primary application window."""
+    """Primary application window matching Stitch Design."""
 
     def __init__(self, ipc_client: IPCClient, db: Database):
         super().__init__()
         self.ipc = ipc_client
         self.db = db
 
-        self.setWindowTitle(f"{APP_DISPLAY_NAME} - Cloudflare R2 Backup")
-        self.resize(1000, 680)
-        self.setMinimumSize(850, 550)
+        self.setWindowTitle(f"{APP_DISPLAY_NAME} - Cloudflare R2 Sync & Backup")
+        self.resize(1050, 700)
+        self.setMinimumSize(900, 580)
 
         icon_path = get_asset_path("icon.png")
         if icon_path.exists():
@@ -81,17 +81,25 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         # -------------------------------------------------------------
-        # Left Navigation Sidebar
+        # Left Navigation Sidebar (Stitch Sidebar)
         # -------------------------------------------------------------
         sidebar = QFrame()
         sidebar.setObjectName("sidebarWidget")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(240)
+        sidebar.setStyleSheet("""
+            QFrame#sidebarWidget {
+                background-color: #191C20;
+                border-right: 1px solid #272A2E;
+            }
+        """)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(16, 20, 16, 16)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setSpacing(6)
 
-        # App Brand
+        # App Brand Header
         brand_row = QHBoxLayout()
+        brand_row.setSpacing(10)
+
         brand_logo = QLabel()
         icon_path = get_asset_path("icon.png")
         if icon_path.exists():
@@ -99,27 +107,31 @@ class MainWindow(QMainWindow):
             brand_logo.setPixmap(pix)
         else:
             brand_logo.setText("🛡️")
-            brand_logo.setStyleSheet("font-size: 22px;")
-        brand_title = QLabel(APP_DISPLAY_NAME)
-        brand_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #FFFFFF;")
+            brand_logo.setStyleSheet("font-size: 20px;")
+
+        brand_title_box = QVBoxLayout()
+        brand_title_box.setSpacing(0)
+        brand_title = QLabel("r2sync")
+        brand_title.setStyleSheet("font-size: 19px; font-weight: 700; color: #F6821F; letter-spacing: -0.02em;")
         brand_ver = QLabel(f"v{APP_VERSION}")
-        brand_ver.setStyleSheet("color: #64748B; font-size: 11px; margin-top: 4px;")
+        brand_ver.setStyleSheet("color: #A58C7D; font-size: 11px;")
+        brand_title_box.addWidget(brand_title)
+        brand_title_box.addWidget(brand_ver)
 
         brand_row.addWidget(brand_logo)
-        brand_row.addWidget(brand_title)
-        brand_row.addWidget(brand_ver)
+        brand_row.addLayout(brand_title_box)
         brand_row.addStretch()
         sidebar_layout.addLayout(brand_row)
 
         sidebar_layout.addSpacing(16)
 
-        # Nav Buttons (Section 5: Dashboard, Backups, Sync, Activity, Storage, Settings)
+        # Nav Buttons (Matching Stitch: Overview, Backups, Multi-PC Sync, Activity, Storage, Settings)
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        self.btn_nav_dashboard = self._create_nav_button("📊  Dashboard", 0)
+        self.btn_nav_dashboard = self._create_nav_button("📊  Overview", 0)
         self.btn_nav_jobs = self._create_nav_button("📁  Backups", 1)
-        self.btn_nav_sync = self._create_nav_button("🔄  Sync", 2)
+        self.btn_nav_sync = self._create_nav_button("🔄  Multi-PC Sync", 2)
         self.btn_nav_history = self._create_nav_button("📜  Activity", 3)
         self.btn_nav_storage = self._create_nav_button("☁️  Storage", 4)
         self.btn_nav_settings = self._create_nav_button("⚙️  Settings", 5)
@@ -132,10 +144,17 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.btn_nav_settings)
         sidebar_layout.addStretch()
 
-        # Service Status Indicator at bottom of sidebar
-        self.svc_badge = QLabel("● Service Online")
-        self.svc_badge.setStyleSheet("color: #10B981; font-size: 12px; font-weight: 500;")
-        sidebar_layout.addWidget(self.svc_badge)
+        # System Status Indicator at bottom of sidebar (Stitch Footer)
+        status_frame = QFrame()
+        status_frame.setStyleSheet("border-top: 1px solid #272A2E; padding-top: 12px;")
+        sf_layout = QHBoxLayout(status_frame)
+        sf_layout.setContentsMargins(0, 0, 0, 0)
+        sf_layout.setSpacing(6)
+
+        self.svc_badge = QLabel("● Everything is healthy")
+        self.svc_badge.setStyleSheet("color: #4AE176; font-size: 12px; font-weight: 500;")
+        sf_layout.addWidget(self.svc_badge)
+        sidebar_layout.addWidget(status_frame)
 
         root_layout.addWidget(sidebar)
 
@@ -162,7 +181,6 @@ class MainWindow(QMainWindow):
 
         self.btn_nav_dashboard.setChecked(True)
 
-
     def _create_nav_button(self, text: str, view_index: int) -> QPushButton:
         btn = QPushButton(text)
         btn.setCheckable(True)
@@ -172,19 +190,29 @@ class MainWindow(QMainWindow):
                 text-align: left;
                 padding: 10px 14px;
                 font-size: 13px;
-                border-radius: 6px;
+                border-radius: 8px;
+                background-color: transparent;
+                border: 1px solid transparent;
+                color: #A58C7D;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #272A2E;
+                color: #E1E2E8;
             }
             QPushButton:checked {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                font-weight: bold;
-                border: none;
+                background-color: #272A2E;
+                color: #FFB786;
+                font-weight: 600;
+                border-right: 3px solid #F6821F;
             }
         """)
+
         def on_nav_clicked():
             self.stack.setCurrentIndex(view_index)
             if view_index == 4:
                 self._refresh_storage()
+
         btn.clicked.connect(on_nav_clicked)
         self.nav_group.addButton(btn, view_index)
         return btn
@@ -295,23 +323,28 @@ class MainWindow(QMainWindow):
             # Background service & rclone engine check
             is_svc_running = self.ipc.is_service_running()
             if is_svc_running:
-                self.svc_badge.setText("● Service Online")
-                self.svc_badge.setStyleSheet("color: #10B981; font-size: 12px;")
+                if conflicts_count > 0:
+                    self.svc_badge.setText(f"⚠️ {conflicts_count} Conflict(s)")
+                    self.svc_badge.setStyleSheet("color: #F6821F; font-size: 12px; font-weight: 600;")
+                else:
+                    self.svc_badge.setText("● Everything is healthy")
+                    self.svc_badge.setStyleSheet("color: #4AE176; font-size: 12px; font-weight: 500;")
                 self.view_settings.set_service_status(True)
                 try:
                     r_status = self.ipc.get_rclone_status()
                     self.view_settings.set_rclone_status(
                         r_status.get("installed", False),
-                        r_status.get("version", "Unknown")
+                        r_status.get("version", "Unknown"),
                     )
                 except Exception:
                     pass
             else:
                 self.svc_badge.setText("● Standalone Mode")
-                self.svc_badge.setStyleSheet("color: #F59E0B; font-size: 12px;")
+                self.svc_badge.setStyleSheet("color: #FFB786; font-size: 12px;")
                 self.view_settings.set_service_status(False)
                 try:
                     from r2sync.core.rclone_engine import RcloneBinaryManager
+
                     installed = RcloneBinaryManager.is_installed()
                     ver = RcloneBinaryManager.get_version() if installed else "Not installed"
                     self.view_settings.set_rclone_status(installed, ver)
@@ -322,7 +355,6 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             logger.debug(f"Refresh data error: {e}")
-
 
     def _refresh_history(self):
         try:
@@ -352,6 +384,7 @@ class MainWindow(QMainWindow):
                 buckets = self.ipc.list_buckets() or []
             else:
                 from r2sync.core.r2_client import CloudflareR2Client
+
                 cf = CloudflareR2Client()
                 bucket_objs = cf.list_buckets(creds)
                 buckets = [b.to_dict() for b in bucket_objs]
@@ -379,6 +412,7 @@ class MainWindow(QMainWindow):
             else:
                 from r2sync.core.credentials import get_r2_credentials
                 from r2sync.core.r2_client import CloudflareR2Client
+
                 creds = get_r2_credentials()
                 if creds and creds.account_id:
                     cf = CloudflareR2Client()
@@ -436,6 +470,7 @@ class MainWindow(QMainWindow):
             job = self.db.get_job(job_id)
             if job:
                 from r2sync.core.backup_engine import BackupEngine
+
                 be = BackupEngine(self.db)
                 be.trigger_job_async(job)
         self.refresh_all_data()
@@ -457,6 +492,7 @@ class MainWindow(QMainWindow):
                 self.ipc.create_bucket(bucket_name)
             else:
                 from r2sync.core.r2_client import CloudflareR2Client
+
                 cf = CloudflareR2Client()
                 cf.create_bucket(bucket_name)
             QMessageBox.information(self, "Success", f"Bucket '{bucket_name}' created successfully.")
@@ -471,6 +507,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Success", f"Rclone successfully downloaded: {res.get('version')}")
             else:
                 from r2sync.core.rclone_engine import RcloneBinaryManager
+
                 RcloneBinaryManager.download_and_install()
                 QMessageBox.information(self, "Success", "Rclone downloaded and installed.")
             self.refresh_all_data()
@@ -484,6 +521,7 @@ class MainWindow(QMainWindow):
             else:
                 from r2sync.core.models import R2Credentials
                 from r2sync.core.r2_client import CloudflareR2Client
+
                 creds = R2Credentials(account_id=acc, access_key_id=ak, secret_access_key=sk)
                 cf = CloudflareR2Client()
                 res = cf.test_connection(creds)
@@ -501,6 +539,7 @@ class MainWindow(QMainWindow):
                 )
                 if ans == QMessageBox.Yes:
                     from r2sync.core.credentials import save_r2_credentials
+
                     save_r2_credentials(acc, ak, sk)
                     self.view_settings._load_current_values()
                     self._on_credentials_saved()
@@ -526,6 +565,7 @@ class MainWindow(QMainWindow):
             if self.ipc.is_service_running():
                 return self.ipc.check_folder_overlap(path)
             from r2sync.core.sync_engine import SyncEngine
+
             se = SyncEngine(self.db)
             return se.check_folder_overlap(path)
 
@@ -545,6 +585,7 @@ class MainWindow(QMainWindow):
                 )
             else:
                 from r2sync.core.sync_engine import SyncEngine
+
                 se = SyncEngine(self.db)
                 se.create_and_init_dataset(
                     name=res["name"],
@@ -566,6 +607,7 @@ class MainWindow(QMainWindow):
                 discovered = self.ipc.discover_remote_datasets()
             else:
                 from r2sync.core.sync_engine import SyncEngine
+
                 se = SyncEngine(self.db)
                 discovered = [d.to_dict() for d in se.discover_remote_datasets()]
         except Exception as e:
@@ -576,7 +618,7 @@ class MainWindow(QMainWindow):
                 self,
                 "No Datasets Found",
                 "No existing shared datasets were found in your Cloudflare R2 bucket.\n\n"
-                "To start sharing a folder, use '+ Add Sync Folder' to create the first dataset on this PC."
+                "To start sharing a folder, use '+ Add Sync Folder' to create the first dataset on this PC.",
             )
             return
 
@@ -593,6 +635,7 @@ class MainWindow(QMainWindow):
             else:
                 from r2sync.core.models import RemoteDatasetInfo
                 from r2sync.core.sync_engine import SyncEngine
+
                 se = SyncEngine(self.db)
                 info = RemoteDatasetInfo.from_dict(sel)
                 se.join_remote_dataset(remote_info=info, local_path=loc)
@@ -611,6 +654,7 @@ class MainWindow(QMainWindow):
             if self.ipc.is_service_running():
                 return self.ipc.remove_sync_device(ds_id, dev_id)
             from r2sync.core.sync_engine import SyncEngine
+
             se = SyncEngine(self.db)
             return se.remove_device(ds_id, dev_id)
 
@@ -618,6 +662,7 @@ class MainWindow(QMainWindow):
             if self.ipc.is_service_running():
                 return self.ipc.refresh_sync_devices(ds_id)
             from r2sync.core.sync_engine import SyncEngine
+
             se = SyncEngine(self.db)
             return [d.to_dict() for d in se.refresh_connected_devices(ds_id)]
 
@@ -639,6 +684,7 @@ class MainWindow(QMainWindow):
             if self.ipc.is_service_running():
                 return self.ipc.resolve_conflict(c_id, res)
             from r2sync.core.sync_engine import SyncEngine
+
             se = SyncEngine(self.db)
             return se.resolve_conflict(c_id, res)
 
@@ -657,6 +703,7 @@ class MainWindow(QMainWindow):
             self.ipc.sync_dataset_now(dataset_id)
         else:
             from r2sync.core.sync_engine import SyncEngine
+
             se = SyncEngine(self.db)
             se.trigger_sync_async(dataset_id)
         self.refresh_all_data()
@@ -692,6 +739,7 @@ class MainWindow(QMainWindow):
                 self.ipc.delete_sync_dataset(dataset_id, delete_remote_files=False)
             else:
                 from r2sync.core.sync_engine import SyncEngine
+
                 se = SyncEngine(self.db)
                 se.delete_dataset(dataset_id, delete_remote_files=False)
             self.refresh_all_data()
@@ -708,11 +756,11 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
-
     def _on_force_quit(self):
         self.tray.hide()
         self.ipc.stop_event_stream()
         from PySide6.QtWidgets import QApplication
+
         QApplication.quit()
 
     def closeEvent(self, event: QCloseEvent):

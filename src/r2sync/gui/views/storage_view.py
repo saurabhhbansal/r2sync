@@ -1,4 +1,4 @@
-"""Cloudflare R2 Storage management and dashboard links view."""
+"""Cloudflare R2 Storage management and dashboard links view matching Stitch Design."""
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -23,11 +24,12 @@ from r2sync.core.r2_client import CloudflareR2Client
 class CreateBucketDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Create New Cloudflare R2 Bucket")
-        self.resize(400, 160)
+        self.setWindowTitle("Create Cloudflare R2 Bucket")
+        self.resize(420, 180)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(14)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         layout.addWidget(QLabel("Enter bucket name (lowercase letters, numbers, hyphens):"))
         self.name_input = QLineEdit()
@@ -55,7 +57,7 @@ class CreateBucketDialog(QDialog):
 
 
 class StorageView(QWidget):
-    """View displaying Cloudflare R2 buckets, usage stats, and dashboard shortcuts."""
+    """View displaying Cloudflare R2 buckets, usage stats, and dashboard shortcuts matching Stitch Design."""
 
     refresh_requested = Signal()
     create_bucket_requested = Signal(str)
@@ -72,6 +74,7 @@ class StorageView(QWidget):
         # Header
         header = QHBoxLayout()
         title_box = QVBoxLayout()
+        title_box.setSpacing(2)
         title = QLabel("Cloudflare R2 Storage")
         title.setObjectName("titleLabel")
         subtitle = QLabel("Manage buckets, check storage usage, and access Cloudflare dashboard")
@@ -82,9 +85,11 @@ class StorageView(QWidget):
         header.addStretch()
 
         create_btn = QPushButton("➕ Create Bucket")
+        create_btn.setStyleSheet("padding: 8px 16px; font-weight: 600;")
         create_btn.clicked.connect(self._open_create_bucket)
         refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.setObjectName("secondaryBtn")
+        refresh_btn.setStyleSheet("padding: 8px 14px;")
         refresh_btn.clicked.connect(self.refresh_requested.emit)
 
         header.addWidget(create_btn)
@@ -95,25 +100,29 @@ class StorageView(QWidget):
         acc_frame = QFrame()
         acc_frame.setObjectName("cardWidget")
         acc_layout = QHBoxLayout(acc_frame)
+        acc_layout.setContentsMargins(16, 12, 16, 12)
 
         self.acc_label = QLabel("<b>Cloudflare Account:</b> Not configured")
-        self.acc_label.setStyleSheet("color: #CBD5E1;")
+        self.acc_label.setStyleSheet("color: #E1E2E8; font-size: 13px;")
         acc_layout.addWidget(self.acc_label)
         acc_layout.addStretch()
 
         # Cloudflare official link buttons
         dash_btn = QPushButton("🌐 Open Cloudflare R2")
         dash_btn.setObjectName("secondaryBtn")
+        dash_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         dash_btn.clicked.connect(self._open_cf_dashboard)
         acc_layout.addWidget(dash_btn)
 
         tokens_btn = QPushButton("🔑 API Tokens")
         tokens_btn.setObjectName("secondaryBtn")
+        tokens_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         tokens_btn.clicked.connect(self._open_cf_tokens)
         acc_layout.addWidget(tokens_btn)
 
         billing_btn = QPushButton("💳 Billing & Usage")
         billing_btn.setObjectName("secondaryBtn")
+        billing_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
         billing_btn.clicked.connect(self._open_cf_billing)
         acc_layout.addWidget(billing_btn)
 
@@ -123,7 +132,10 @@ class StorageView(QWidget):
         table_frame = QFrame()
         table_frame.setObjectName("cardWidget")
         t_layout = QVBoxLayout(table_frame)
-        t_layout.addWidget(QLabel("<b>Your R2 Buckets:</b>"))
+        t_layout.setSpacing(10)
+        t_title = QLabel("☁️  Your R2 Buckets")
+        t_title.setObjectName("sectionTitleLabel")
+        t_layout.addWidget(t_title)
 
         self.buckets_table = QTableWidget(0, 4)
         self.buckets_table.setHorizontalHeaderLabels(["Bucket Name", "Region", "Objects", "Storage Used"])
@@ -141,40 +153,39 @@ class StorageView(QWidget):
         cost_frame = QFrame()
         cost_frame.setObjectName("cardWidget")
         cost_layout = QVBoxLayout(cost_frame)
-        cost_layout.setSpacing(8)
+        cost_layout.setSpacing(10)
 
-        cost_title = QLabel("💰 Cloudflare R2 Storage & Cost Estimation")
-        cost_title.setStyleSheet("font-weight: bold; color: #FFFFFF; font-size: 14px;")
+        cost_title = QLabel("💰  Cloudflare R2 Storage & Cost Estimation")
+        cost_title.setObjectName("sectionTitleLabel")
         cost_layout.addWidget(cost_title)
 
         self.cost_calc_lbl = QLabel("Estimated Storage: <b>0 GB</b> | Estimated Monthly Cost: <b>$0.00 / month</b> (Within Free Tier)")
-        self.cost_calc_lbl.setStyleSheet("color: #38BDF8; font-size: 13px;")
+        self.cost_calc_lbl.setStyleSheet("color: #FFB786; font-size: 13px; font-weight: 500;")
         cost_layout.addWidget(self.cost_calc_lbl)
 
         pricing_notes = QLabel(
             "• <b>Free Tier:</b> First 10 GB-months of storage are 100% free every month.<br>"
             "• <b>Standard Rate:</b> $0.015 per GB-month for storage beyond the free tier.<br>"
             "• <b>Egress Fees:</b> $0 (Zero egress / bandwidth fees on Cloudflare R2).<br>"
-            "• <i>Note: Estimates are approximations. Class A/B API operations and taxes may apply according to Cloudflare's billing policy.</i>"
+            "• <i>Note: Estimates are approximations. Class A/B API operations may apply according to Cloudflare billing policy.</i>"
         )
-        pricing_notes.setStyleSheet("color: #94A3B8; font-size: 11px; line-height: 1.4;")
+        pricing_notes.setStyleSheet("color: #A58C7D; font-size: 11px; line-height: 1.5;")
         cost_layout.addWidget(pricing_notes)
 
         cost_link_btn = QPushButton("🌐 View Official Cloudflare R2 Pricing Details ↗")
         cost_link_btn.setObjectName("secondaryBtn")
-        cost_link_btn.setStyleSheet("padding: 4px 8px; font-size: 11px;")
+        cost_link_btn.setStyleSheet("padding: 4px 10px; font-size: 11px; max-width: 320px;")
         cost_link_btn.clicked.connect(lambda: CloudflareR2Client.open_in_browser("https://developers.cloudflare.com/r2/pricing/"))
         cost_layout.addWidget(cost_link_btn)
 
         main_layout.addWidget(cost_frame)
 
-
     def set_account_id(self, account_id: str):
         if account_id:
             masked_acc = f"{account_id[:6]}••••••••{account_id[-4:]}" if len(account_id) > 10 else account_id
-            self.acc_label.setText(f"<font color='#10B981'>● Connected</font> | <b>Account ID:</b> {masked_acc}  |  <b>Endpoint:</b> {account_id}.r2.cloudflarestorage.com")
+            self.acc_label.setText(f"<font color='#4AE176'>● Connected</font> | <b>Account ID:</b> {masked_acc}  |  <b>Endpoint:</b> {account_id}.r2.cloudflarestorage.com")
         else:
-            self.acc_label.setText("<font color='#94A3B8'>● Not Connected</font> | <b>Cloudflare Account:</b> Not configured in Settings")
+            self.acc_label.setText("<font color='#A58C7D'>● Not Connected</font> | <b>Cloudflare Account:</b> Not configured in Settings")
 
     def set_buckets(self, buckets: list):
         self.buckets_table.setRowCount(len(buckets))
@@ -215,7 +226,6 @@ class StorageView(QWidget):
             self.cost_calc_lbl.setText(
                 f"Estimated Storage: <b>{round(total_gb, 2)} GB</b> | Estimated Monthly Cost: <b>${est_cost:.2f} / month</b>"
             )
-
 
     def _open_create_bucket(self):
         dlg = CreateBucketDialog(self)

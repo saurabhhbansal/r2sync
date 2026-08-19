@@ -2,7 +2,7 @@
 
 APP_NAME = "r2sync"
 APP_DISPLAY_NAME = "r2sync"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_AUTHOR = "r2sync contributors"
 APP_DESCRIPTION = "Native, private, open-source backup tool for Cloudflare R2"
 

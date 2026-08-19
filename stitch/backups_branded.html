@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Backups - r2sync</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "on-tertiary-fixed-variant": "#005321",
+                "on-primary-fixed-variant": "#723600",
+                "surface-container-high": "#272a2e",
+                "outline-variant": "#564336",
+                "primary-fixed": "#ffdcc6",
+                "surface-container-highest": "#323539",
+                "on-secondary-fixed": "#191c20",
+                "tertiary-container": "#02ba55",
+                "surface-tint": "#ffb786",
+                "orange-gradient-end": "#FFB786",
+                "on-primary": "#502400",
+                "secondary": "#c4c6cb",
+                "on-tertiary-container": "#004219",
+                "tertiary-fixed": "#6bff8f",
+                "on-surface-variant": "#ddc1b0",
+                "tertiary": "#4ae176",
+                "on-secondary-container": "#babcc1",
+                "error": "#ffb4ab",
+                "surface-bright": "#36393E",
+                "primary-container": "#f6821f",
+                "secondary-fixed-dim": "#c4c6cb",
+                "on-error": "#690005",
+                "inverse-on-surface": "#2e3135",
+                "surface-dim": "#111418",
+                "on-tertiary": "#003915",
+                "secondary-fixed": "#e1e2e8",
+                "on-primary-container": "#5b2a00",
+                "outline": "#a58c7d",
+                "tertiary-fixed-dim": "#4ae176",
+                "primary": "#ffb786",
+                "surface-container": "#1d2024",
+                "on-error-container": "#ffdad6",
+                "on-secondary-fixed-variant": "#44474b",
+                "surface-container-lowest": "#0b0e12",
+                "on-background": "#e1e2e8",
+                "background": "#111418",
+                "primary-fixed-dim": "#ffb786",
+                "on-primary-fixed": "#311300",
+                "surface": "#111418",
+                "on-secondary": "#2e3135",
+                "secondary-container": "#494c50",
+                "error-container": "#93000a",
+                "on-tertiary-fixed": "#002109",
+                "surface-variant": "#323539",
+                "surface-container-low": "#191c20",
+                "on-surface": "#e1e2e8",
+                "inverse-surface": "#e1e2e8",
+                "inverse-primary": "#964900"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "container-padding": "24px",
+                "element-gap": "12px",
+                "margin-sm": "16px",
+                "margin-md": "24px",
+                "unit": "4px",
+                "list-item-gap": "8px",
+                "sidebar-width": "260px"
+        },
+        "fontFamily": {
+                "metric": [
+                        "Inter"
+                ],
+                "body-md": [
+                        "Inter"
+                ],
+                "label": [
+                        "Inter"
+                ],
+                "page-title": [
+                        "Inter"
+                ],
+                "section-title": [
+                        "Inter"
+                ],
+                "body-sm": [
+                        "Inter"
+                ],
+                "caption": [
+                        "Inter"
+                ]
+        },
+        "fontSize": {
+                "metric": [
+                        "32px",
+                        {
+                                "lineHeight": "40px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label": [
+                        "12px",
+                        {
+                                "lineHeight": "16px",
+                                "fontWeight": "500"
+                        }
+                ],
+                "page-title": [
+                        "24px",
+                        {
+                                "lineHeight": "32px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "section-title": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-sm": [
+                        "13px",
+                        {
+                                "lineHeight": "18px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "caption": [
+                        "11px",
+                        {
+                                "lineHeight": "14px",
+                                "fontWeight": "400"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+</head>
+<body class="bg-background text-on-background min-h-screen flex font-body-md text-body-md">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen w-64 border-r border-outline-variant bg-surface-container-low py-margin-md flex-shrink-0">
+<div class="px-container-padding mb-margin-lg">
+<img alt="r2sync logo" class="h-10 w-auto object-contain object-left mb-1" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDvcFgqC5HK2q6M9VExQp38P6Q5IWFrHVD4Khk5MxIFSHErw1wqgPim4yMjYSlTYcIwr3h5ovr56tG_PKwre7iiw4J45NxhJLv6IafG6E23jActE6DfjHsOtvpMg71cz_WrrXajgaHubjKkxwUqSf2JdqZJ4ko_MqdEqz2QxbTqbyNdbDtKOhi_QYwbCC-W4MkDHsnIsJcj99HtZgCXWmcnQ2J4wmbfPZP3br-WNahlf6BI70xOBJGNey0ekd0RJf0aXA"/>
+<p class="font-body-sm text-body-sm text-on-surface-variant">v1.0</p>
+</div>
+<ul class="flex-1 flex flex-col gap-unit">
+<li>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label text-label">Overview</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-primary font-semibold border-r-2 border-primary bg-surface-variant opacity-90 transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="backup">backup</span>
+<span class="font-label text-label">Backups</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="sync_alt">sync_alt</span>
+<span class="font-label text-label">Multi-PC Sync</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="list_alt">list_alt</span>
+<span class="font-label text-label">Activity</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="cloud">cloud</span>
+<span class="font-label text-label">Storage</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label text-label">Settings</span>
+</a>
+</li>
+</ul>
+<div class="px-container-padding mt-auto">
+<div class="flex items-center gap-element-gap text-tertiary">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle">check_circle</span>
+<span class="font-label text-label">Everything is healthy</span>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<div class="flex-1 flex flex-col h-screen overflow-hidden">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center px-margin-lg h-16 w-full bg-surface border-b border-outline-variant flex-shrink-0">
+<div class="md:hidden">
+<img alt="r2sync logo" class="h-8 w-auto object-contain object-left" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDh6vub819nN-VS1_H3TeAt4qupmAYtIxP2pKQ4dsRjDlMUyU6hZvsDriXAxfP4E5j_1JsS6uJrZxC3cuGDaTKqn_UuAv59b2j-lwxDZDB0MV8Hy_aIf324D2gDFF-RFrKzbKWf-fJksDj5SdgwvanIF6sBjDXhpVFOAtfC4y_Sf3angSUEzOZB4_iFwp3Ad_DfgHlUYHa6R7UuElaHANjjZKRjs8aLxc7GJ3EvbU4_uXUxB6fBmZFurTI8yMMeHEHXCQ"/>
+</div>
+<div class="hidden md:block"></div> <!-- Spacer for flex alignment -->
+<div class="flex gap-element-gap">
+<button class="text-on-surface-variant hover:text-primary transition-colors active:scale-95">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors active:scale-95">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+</header>
+<!-- Page Content -->
+<main class="flex-1 overflow-y-auto p-container-padding">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-element-gap mb-margin-lg">
+<div>
+<h2 class="font-page-title text-page-title text-on-background">Backups</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-unit">Automatically protect folders to Cloudflare R2.</p>
+</div>
+<div class="flex gap-list-item-gap">
+<button class="px-4 py-2 border border-outline-variant rounded-lg font-label text-label text-on-surface hover:bg-surface-variant transition-colors">
+                        Run All
+                    </button>
+<button class="px-4 py-2 bg-primary-container text-white rounded-lg font-label text-label hover:opacity-90 transition-opacity">
+                        + Create Backup
+                    </button>
+</div>
+</div>
+<!-- Job List -->
+<div class="flex flex-col gap-element-gap">
+<!-- Job Card 1 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-margin-sm hover:bg-surface-container-high transition-colors">
+<div class="flex justify-between items-start mb-element-gap">
+<div class="flex items-center gap-list-item-gap">
+<span class="material-symbols-outlined text-primary" data-icon="folder" style="font-variation-settings: 'FILL' 1;">folder</span>
+<h3 class="font-section-title text-section-title text-on-background">Documents</h3>
+<span class="px-2 py-0.5 rounded-full bg-tertiary-container/20 text-tertiary border border-tertiary/30 font-caption text-caption flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> Active
+                            </span>
+</div>
+<div class="flex items-center gap-unit">
+<button class="px-3 py-1.5 border border-outline-variant rounded bg-surface hover:bg-surface-variant font-label text-label text-on-surface transition-colors">
+                                Run Now
+                            </button>
+<button class="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-element-gap mb-margin-sm">
+<div>
+<p class="font-caption text-caption text-on-surface-variant uppercase tracking-wider mb-unit">Local Path</p>
+<p class="font-body-sm text-body-sm text-on-surface font-mono">C:\Users\Saurabh\Documents</p>
+</div>
+<div>
+<p class="font-caption text-caption text-on-surface-variant uppercase tracking-wider mb-unit">Remote Destination</p>
+<p class="font-body-sm text-body-sm text-on-surface font-mono">backups/documents</p>
+</div>
+</div>
+<div class="flex flex-wrap gap-margin-md items-center pt-element-gap border-t border-outline-variant/50">
+<div class="flex items-center gap-unit text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+<span class="font-body-sm text-body-sm">Every 1 hour</span>
+</div>
+<div class="flex items-center gap-unit text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="history">history</span>
+<span class="font-body-sm text-body-sm">Last: 4 min ago</span>
+<span class="text-tertiary flex items-center gap-1 ml-1"><span class="material-symbols-outlined text-xs" data-icon="check">check</span> Completed</span>
+</div>
+<div class="flex items-center gap-unit text-on-surface-variant ml-auto">
+<span class="material-symbols-outlined text-sm" data-icon="data_usage">data_usage</span>
+<span class="font-body-sm text-body-sm">2.4 GB transferred</span>
+</div>
+</div>
+</div>
+<!-- Job Card 2 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-margin-sm hover:bg-surface-container-high transition-colors">
+<div class="flex justify-between items-start mb-element-gap">
+<div class="flex items-center gap-list-item-gap">
+<span class="material-symbols-outlined text-primary" data-icon="folder" style="font-variation-settings: 'FILL' 1;">folder</span>
+<h3 class="font-section-title text-section-title text-on-background">Projects</h3>
+<span class="px-2 py-0.5 rounded-full bg-tertiary-container/20 text-tertiary border border-tertiary/30 font-caption text-caption flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> Active
+                            </span>
+</div>
+<div class="flex items-center gap-unit">
+<button class="px-3 py-1.5 border border-outline-variant rounded bg-surface hover:bg-surface-variant font-label text-label text-on-surface transition-colors">
+                                Run Now
+                            </button>
+<button class="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-element-gap mb-margin-sm">
+<div>
+<p class="font-caption text-caption text-on-surface-variant uppercase tracking-wider mb-unit">Local Path</p>
+<p class="font-body-sm text-body-sm text-on-surface font-mono">D:\Work\Projects</p>
+</div>
+<div>
+<p class="font-caption text-caption text-on-surface-variant uppercase tracking-wider mb-unit">Remote Destination</p>
+<p class="font-body-sm text-body-sm text-on-surface font-mono">backups/projects</p>
+</div>
+</div>
+<div class="flex flex-wrap gap-margin-md items-center pt-element-gap border-t border-outline-variant/50">
+<div class="flex items-center gap-unit text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+<span class="font-body-sm text-body-sm">Every 30 minutes</span>
+</div>
+<div class="flex items-center gap-unit text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="history">history</span>
+<span class="font-body-sm text-body-sm">Last: 15 min ago</span>
+<span class="text-tertiary flex items-center gap-1 ml-1"><span class="material-symbols-outlined text-xs" data-icon="check">check</span> Completed</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

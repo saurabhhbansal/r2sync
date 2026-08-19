@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>r2sync - Activity</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "on-tertiary-fixed-variant": "#005321",
+                "on-primary-fixed-variant": "#723600",
+                "surface-container-high": "#272a2e",
+                "outline-variant": "#564336",
+                "primary-fixed": "#ffdcc6",
+                "surface-container-highest": "#323539",
+                "on-secondary-fixed": "#191c20",
+                "tertiary-container": "#02ba55",
+                "surface-tint": "#ffb786",
+                "orange-gradient-end": "#FFB786",
+                "on-primary": "#502400",
+                "secondary": "#c4c6cb",
+                "on-tertiary-container": "#004219",
+                "tertiary-fixed": "#6bff8f",
+                "on-surface-variant": "#ddc1b0",
+                "tertiary": "#4ae176",
+                "on-secondary-container": "#babcc1",
+                "error": "#ffb4ab",
+                "surface-bright": "#36393E",
+                "primary-container": "#f6821f",
+                "secondary-fixed-dim": "#c4c6cb",
+                "on-error": "#690005",
+                "inverse-on-surface": "#2e3135",
+                "surface-dim": "#111418",
+                "on-tertiary": "#003915",
+                "secondary-fixed": "#e1e2e8",
+                "on-primary-container": "#5b2a00",
+                "outline": "#a58c7d",
+                "tertiary-fixed-dim": "#4ae176",
+                "primary": "#ffb786",
+                "surface-container": "#1d2024",
+                "on-error-container": "#ffdad6",
+                "on-secondary-fixed-variant": "#44474b",
+                "surface-container-lowest": "#0b0e12",
+                "on-background": "#e1e2e8",
+                "background": "#111418",
+                "primary-fixed-dim": "#ffb786",
+                "on-primary-fixed": "#311300",
+                "surface": "#111418",
+                "on-secondary": "#2e3135",
+                "secondary-container": "#494c50",
+                "error-container": "#93000a",
+                "on-tertiary-fixed": "#002109",
+                "surface-variant": "#323539",
+                "surface-container-low": "#191c20",
+                "on-surface": "#e1e2e8",
+                "inverse-surface": "#e1e2e8",
+                "inverse-primary": "#964900"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "container-padding": "24px",
+                "element-gap": "12px",
+                "margin-sm": "16px",
+                "margin-md": "24px",
+                "unit": "4px",
+                "list-item-gap": "8px",
+                "sidebar-width": "260px"
+        },
+        "fontFamily": {
+                "metric": [
+                        "Inter"
+                ],
+                "body-md": [
+                        "Inter"
+                ],
+                "label": [
+                        "Inter"
+                ],
+                "page-title": [
+                        "Inter"
+                ],
+                "section-title": [
+                        "Inter"
+                ],
+                "body-sm": [
+                        "Inter"
+                ],
+                "caption": [
+                        "Inter"
+                ]
+        },
+        "fontSize": {
+                "metric": [
+                        "32px",
+                        {
+                                "lineHeight": "40px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label": [
+                        "12px",
+                        {
+                                "lineHeight": "16px",
+                                "fontWeight": "500"
+                        }
+                ],
+                "page-title": [
+                        "24px",
+                        {
+                                "lineHeight": "32px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "section-title": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-sm": [
+                        "13px",
+                        {
+                                "lineHeight": "18px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "caption": [
+                        "11px",
+                        {
+                                "lineHeight": "14px",
+                                "fontWeight": "400"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen flex overflow-hidden font-body-md text-body-md">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-full py-margin-md w-64 border-r border-outline-variant bg-surface-container-low dark:bg-surface-container-low">
+<div class="px-margin-md mb-margin-lg">
+<img alt="r2sync logo" class="h-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDd9QUWzPJMCo-ByLWDUMKBwDw0kjJvMbAAk6MeECu-NVS3jxkVaITtvN1CrI1qMUfk3ZCUsSK-vFK3zUkSmg5Ci0iDHdcgIuw8Mf4jjtfp3eZeTFZNSGPqZc25GMDiobNxEsbFov5FfA6nT59BplLQcpCfwTaCVjv7Jw5f--XwkKKL6Oz4EKRw9Os7GG0fXK8ZI81oBbFwH0yOEq_kXeNslgIL2joTd61I7TWJxKyYX9dEcYgOu3QJE55PD2h12F9gcA"/>
+<p class="font-caption text-caption text-on-surface-variant mt-1">v1.0</p>
+</div>
+<div class="flex flex-col gap-1 flex-grow overflow-y-auto scrollbar-hide px-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label text-label">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="backup">backup</span>
+<span class="font-label text-label">Backups</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="sync_alt">sync_alt</span>
+<span class="font-label text-label">Multi-PC Sync</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary font-semibold border-r-2 border-primary bg-surface-variant opacity-90 transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="list_alt">list_alt</span>
+<span class="font-label text-label">Activity</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="cloud">cloud</span>
+<span class="font-label text-label">Storage</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors duration-150 mt-auto" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label text-label">Settings</span>
+</a>
+</div>
+<div class="px-margin-md mt-margin-md pt-margin-sm border-t border-outline-variant">
+<div class="flex items-center gap-2 text-tertiary">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle">check_circle</span>
+<span class="font-caption text-caption">Everything is healthy</span>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-full overflow-hidden bg-background">
+<!-- TopAppBar (Mobile Only - Simplified for Demo, normally would have hamburger menu) -->
+<header class="md:hidden flex justify-between items-center px-margin-lg w-full h-16 border-b border-outline-variant bg-surface dark:bg-surface">
+<img alt="r2sync logo" class="h-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBEY-9PIF7QAoU63F4wLRWdffkfIR3uJyCEEYrzbiM8iuPsPo4rfCrtxRLWBpty7X77PVC4KmsNWL-H_0I93EZvrmRC9DvND9iKbm1LoUihhPM4XmKO2yl3VVaMI-oAiCfESpVDEt7NFWTKHBd0ySUVnhL9Z4KJgquAFz2XMe-XoZWU9PnOyAJbROxObOGqaREaS6OMohXoA6w1aadyQzxQS8KLax8FM1IlZ4xQ8MY2feOBg13sfE58dDivLEqVsdBIwA"/>
+<div class="flex gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+</header>
+<main class="flex-1 flex overflow-hidden">
+<!-- Activity Timeline Canvas -->
+<div class="flex-1 flex flex-col p-container-padding overflow-y-auto">
+<header class="flex justify-between items-end mb-margin-lg">
+<div>
+<h2 class="font-page-title text-page-title text-on-surface">Activity</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Review your recent sync and backup events.</p>
+</div>
+</header>
+<!-- Filter Chips -->
+<div class="flex gap-2 mb-margin-lg overflow-x-auto pb-2 scrollbar-hide">
+<button class="px-4 py-1.5 rounded-full border border-primary bg-primary/10 text-primary font-label text-label whitespace-nowrap transition-colors">All</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-variant font-label text-label whitespace-nowrap transition-colors">Backups</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-variant font-label text-label whitespace-nowrap transition-colors">Sync</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-variant font-label text-label whitespace-nowrap transition-colors">Errors</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-variant font-label text-label whitespace-nowrap transition-colors">Conflicts</button>
+</div>
+<!-- Timeline -->
+<div class="space-y-margin-lg">
+<!-- TODAY Section -->
+<div>
+<h3 class="font-label text-label text-on-surface-variant mb-margin-sm uppercase tracking-wider">Today</h3>
+<div class="flex flex-col gap-element-gap relative before:absolute before:inset-y-0 before:left-5 before:w-px before:bg-outline-variant">
+<!-- Event Item 1: Active/Selected State -->
+<div class="relative flex gap-4 p-4 rounded-lg bg-surface-container border border-primary/30 cursor-pointer hover:bg-surface-container-high transition-colors">
+<div class="w-10 h-10 rounded-full bg-tertiary/10 border border-tertiary flex items-center justify-center shrink-0 z-10">
+<span class="material-symbols-outlined text-tertiary text-xl" data-icon="check">check</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-section-title text-section-title text-on-surface">Documents</h4>
+<span class="font-caption text-caption text-on-surface-variant">2 minutes ago</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Backup completed</p>
+<div class="flex gap-4 mt-2 font-caption text-caption text-on-surface-variant">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]" data-icon="database">database</span> 38.4 GB</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]" data-icon="timer">timer</span> 8m 32s</span>
+</div>
+</div>
+</div>
+<!-- Event Item 2 -->
+<div class="relative flex gap-4 p-4 rounded-lg hover:bg-surface-container-high transition-colors border border-transparent cursor-pointer">
+<div class="w-10 h-10 rounded-full bg-secondary/10 border border-secondary flex items-center justify-center shrink-0 z-10">
+<span class="material-symbols-outlined text-secondary text-xl" data-icon="sync_alt">sync_alt</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-section-title text-section-title text-on-surface">Shared Documents</h4>
+<span class="font-caption text-caption text-on-surface-variant">18 minutes ago</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Synced 24 files</p>
+<div class="flex gap-4 mt-2 font-caption text-caption text-on-surface-variant">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]" data-icon="database">database</span> 1.8 GB</span>
+</div>
+</div>
+</div>
+<!-- Event Item 3: Conflict -->
+<div class="relative flex gap-4 p-4 rounded-lg hover:bg-surface-container-high transition-colors border border-transparent cursor-pointer">
+<div class="w-10 h-10 rounded-full bg-primary-container/10 border border-primary-container flex items-center justify-center shrink-0 z-10">
+<span class="material-symbols-outlined text-primary-container text-xl" data-icon="warning">warning</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-section-title text-section-title text-on-surface">Shared Documents</h4>
+<span class="font-caption text-caption text-on-surface-variant">32 minutes ago</span>
+</div>
+<p class="font-body-sm text-body-sm text-primary-container mt-1">Conflict detected</p>
+</div>
+</div>
+<!-- Event Item 4: Error -->
+<div class="relative flex gap-4 p-4 rounded-lg hover:bg-surface-container-high transition-colors border border-transparent cursor-pointer">
+<div class="w-10 h-10 rounded-full bg-error/10 border border-error flex items-center justify-center shrink-0 z-10">
+<span class="material-symbols-outlined text-error text-xl" data-icon="close">close</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-section-title text-section-title text-on-surface">Photos</h4>
+<span class="font-caption text-caption text-on-surface-variant">1 hour ago</span>
+</div>
+<p class="font-body-sm text-body-sm text-error mt-1">Backup failed</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Side Drawer (Activity Details) -->
+<aside class="w-80 border-l border-outline-variant bg-surface-container-low flex flex-col h-full overflow-hidden shrink-0">
+<header class="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container">
+<h3 class="font-section-title text-section-title text-on-surface">Activity Details</h3>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors p-1 rounded-full hover:bg-surface-variant">
+<span class="material-symbols-outlined text-lg" data-icon="close">close</span>
+</button>
+</header>
+<div class="flex-1 overflow-y-auto p-container-padding flex flex-col gap-margin-md">
+<!-- Header Info -->
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-full bg-tertiary/10 border border-tertiary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-tertiary text-2xl" data-icon="check">check</span>
+</div>
+<div>
+<h4 class="font-section-title text-section-title text-on-surface">Documents</h4>
+<p class="font-body-sm text-body-sm text-tertiary">Backup completed successfully</p>
+</div>
+</div>
+<hr class="border-outline-variant border-t"/>
+<!-- Metadata Grid -->
+<div class="grid grid-cols-2 gap-y-4 gap-x-2">
+<div>
+<span class="font-caption text-caption text-on-surface-variant block mb-1">Started</span>
+<span class="font-body-sm text-body-sm text-on-surface">10:42 AM</span>
+</div>
+<div>
+<span class="font-caption text-caption text-on-surface-variant block mb-1">Duration</span>
+<span class="font-body-sm text-body-sm text-on-surface">8m 32s</span>
+</div>
+<div class="col-span-2">
+<span class="font-caption text-caption text-on-surface-variant block mb-1">Transferred</span>
+<span class="font-body-sm text-body-sm text-on-surface">38.4 GB (4,291 items)</span>
+</div>
+</div>
+<hr class="border-outline-variant border-t"/>
+<!-- File List Preview -->
+<div class="flex-1 flex flex-col">
+<h5 class="font-label text-label text-on-surface-variant mb-3 uppercase tracking-wider">Affected Files</h5>
+<div class="flex-1 overflow-y-auto bg-background rounded-lg border border-outline-variant p-2 space-y-1">
+<div class="flex items-center gap-2 p-2 rounded hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-secondary text-[16px]" data-icon="arrow_upward">arrow_upward</span>
+<span class="font-body-sm text-body-sm text-on-surface truncate">presentation_final_v2.pptx</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-secondary text-[16px]" data-icon="arrow_upward">arrow_upward</span>
+<span class="font-body-sm text-body-sm text-on-surface truncate">Q3_financial_report.xlsx</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-secondary text-[16px]" data-icon="arrow_upward">arrow_upward</span>
+<span class="font-body-sm text-body-sm text-on-surface truncate">project_spec.docx</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-secondary text-[16px]" data-icon="arrow_upward">arrow_upward</span>
+<span class="font-body-sm text-body-sm text-on-surface truncate">logo_assets.zip</span>
+</div>
+<button class="w-full text-left p-2 font-caption text-caption text-primary hover:underline mt-2">View all 4,291 files</button>
+</div>
+</div>
+<!-- Action -->
+<div class="pt-4 mt-auto border-t border-outline-variant">
+<button class="w-full px-4 py-2 rounded-lg bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-container-high font-label text-label transition-colors flex justify-center items-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="terminal">terminal</span>
+                            View Technical Details
+                        </button>
+</div>
+</div>
+</aside>
+</main>
+</div>
+</body></html>

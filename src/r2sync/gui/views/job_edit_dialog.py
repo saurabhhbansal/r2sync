@@ -1,4 +1,4 @@
-"""Dialog for creating and modifying backup jobs."""
+"""Dialog for creating and modifying backup jobs matching Stitch Design."""
 
 import json
 import os
@@ -31,7 +31,7 @@ from r2sync.core.models import BackupJob, BackupMode, JobScheduleType
 
 
 class JobEditDialog(QDialog):
-    """Dialog for creating or editing a backup job."""
+    """Dialog for creating or editing a backup job matching Stitch Design."""
 
     def __init__(self, job: Optional[BackupJob] = None, buckets: Optional[List[str]] = None, parent=None):
         super().__init__(parent)
@@ -39,7 +39,7 @@ class JobEditDialog(QDialog):
         self.buckets = buckets or ["r2sync-backups"]
 
         self.setWindowTitle("Edit Backup Job" if job else "Create Backup Job")
-        self.resize(550, 600)
+        self.resize(560, 620)
         self._init_ui()
         if job:
             self._load_job_data(job)
@@ -47,6 +47,7 @@ class JobEditDialog(QDialog):
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(14)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
         form_frame = QFrame()
         form_frame.setObjectName("cardWidget")
@@ -64,6 +65,7 @@ class JobEditDialog(QDialog):
         self.source_input.setPlaceholderText("Full path to local directory")
         browse_btn = QPushButton("📁 Browse...")
         browse_btn.setObjectName("secondaryBtn")
+        browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_source)
         folder_row.addWidget(self.source_input)
         folder_row.addWidget(browse_btn)
@@ -78,6 +80,7 @@ class JobEditDialog(QDialog):
 
         new_bucket_btn = QPushButton("➕ New Bucket")
         new_bucket_btn.setObjectName("secondaryBtn")
+        new_bucket_btn.setStyleSheet("padding: 6px 12px;")
         new_bucket_btn.clicked.connect(self._create_new_bucket)
 
         bucket_row.addWidget(self.bucket_combo, stretch=1)
@@ -93,6 +96,7 @@ class JobEditDialog(QDialog):
         # 4. Schedule Group
         sched_group = QGroupBox("Backup Schedule")
         sched_layout = QVBoxLayout(sched_group)
+        sched_layout.setSpacing(8)
 
         self.schedule_combo = QComboBox()
         self.schedule_combo.addItems([
@@ -133,6 +137,7 @@ class JobEditDialog(QDialog):
         # 5. Backup Mode & Exclusions
         opt_group = QGroupBox("Sync Options & Exclusions")
         opt_layout = QVBoxLayout(opt_group)
+        opt_layout.setSpacing(8)
 
         mode_row = QHBoxLayout()
         self.sync_radio = QRadioButton("Mirror (Sync) - Deletes files in R2 if deleted locally")
@@ -148,7 +153,7 @@ class JobEditDialog(QDialog):
         opt_layout.addWidget(QLabel("Exclusion Patterns (one per line):"))
         self.exclude_edit = QTextEdit()
         self.exclude_edit.setPlaceholderText("*.tmp\n.git/\nnode_modules/")
-        self.exclude_edit.setMaximumHeight(80)
+        self.exclude_edit.setMaximumHeight(70)
         self.exclude_edit.setPlainText("\n".join(DEFAULT_EXCLUDE_PATTERNS[:7]))
         opt_layout.addWidget(self.exclude_edit)
 
@@ -158,8 +163,10 @@ class JobEditDialog(QDialog):
         btn_layout.addStretch()
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.setStyleSheet("padding: 8px 16px;")
         cancel_btn.clicked.connect(self.reject)
         save_btn = QPushButton("Save Backup Job")
+        save_btn.setStyleSheet("padding: 8px 18px; font-weight: 600;")
         save_btn.clicked.connect(self._validate_and_save)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(save_btn)

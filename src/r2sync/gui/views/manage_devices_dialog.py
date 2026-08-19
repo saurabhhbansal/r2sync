@@ -1,4 +1,4 @@
-"""Manage Connected Computers dialog."""
+"""Manage Connected Computers dialog matching Stitch Design."""
 
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 
 class ManageDevicesDialog(QDialog):
-    """Dialog for inspecting and managing computers connected to a shared dataset."""
+    """Dialog for inspecting and managing computers connected to a shared dataset matching Stitch Design."""
 
     device_removed = Signal()
 
@@ -41,20 +41,29 @@ class ManageDevicesDialog(QDialog):
         self.refresh_cb = refresh_cb
 
         self.setWindowTitle(f"Manage Computers — {dataset_name}")
-        self.resize(650, 420)
+        self.resize(680, 440)
         self._init_ui()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(14)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
         # Header Info
         header_card = QFrame()
-        header_card.setObjectName("cardWidget")
+        header_card.setObjectName("heroCardWidget")
+        header_card.setStyleSheet("""
+            QFrame#heroCardWidget {
+                background-color: #1D2024;
+                border: 1px solid #272A2E;
+                border-radius: 12px;
+                padding: 16px;
+            }
+        """)
         hl = QVBoxLayout(header_card)
 
         title = QLabel(f"🖥️ Connected Computers — {self.dataset_name}")
-        title.setStyleSheet("font-size: 15px; font-weight: bold; color: #FFFFFF;")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; color: #E1E2E8;")
         hl.addWidget(title)
 
         desc = QLabel(
@@ -62,7 +71,7 @@ class ManageDevicesDialog(QDialog):
             "You can remove disconnected or retired devices at any time without deleting shared files."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        desc.setStyleSheet("color: #A58C7D; font-size: 12px;")
         hl.addWidget(desc)
         main_layout.addWidget(header_card)
 
@@ -70,15 +79,18 @@ class ManageDevicesDialog(QDialog):
         table_frame = QFrame()
         table_frame.setObjectName("cardWidget")
         tl = QVBoxLayout(table_frame)
+        tl.setSpacing(10)
 
         btn_row_top = QHBoxLayout()
-        btn_row_top.addWidget(QLabel("<b>Registered Devices:</b>"))
+        t_lbl = QLabel("Registered Devices:")
+        t_lbl.setStyleSheet("font-weight: 600; color: #E1E2E8;")
+        btn_row_top.addWidget(t_lbl)
         btn_row_top.addStretch()
 
         if self.refresh_cb:
             refresh_btn = QPushButton("🔄 Refresh Devices")
             refresh_btn.setObjectName("secondaryBtn")
-            refresh_btn.setStyleSheet("padding: 4px 8px; font-size: 11px;")
+            refresh_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
             refresh_btn.clicked.connect(self._on_refresh)
             btn_row_top.addWidget(refresh_btn)
 
@@ -105,6 +117,7 @@ class ManageDevicesDialog(QDialog):
         self.remove_btn = QPushButton("🗑 Remove Selected Computer")
         self.remove_btn.setObjectName("dangerBtn")
         self.remove_btn.setEnabled(False)
+        self.remove_btn.setStyleSheet("padding: 8px 16px;")
         self.remove_btn.clicked.connect(self._on_remove_clicked)
         btn_layout.addWidget(self.remove_btn)
 
@@ -112,6 +125,7 @@ class ManageDevicesDialog(QDialog):
 
         close_btn = QPushButton("Close")
         close_btn.setObjectName("secondaryBtn")
+        close_btn.setStyleSheet("padding: 8px 16px;")
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
 

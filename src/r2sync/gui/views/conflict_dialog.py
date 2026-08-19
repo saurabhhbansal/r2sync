@@ -38,6 +38,7 @@ class ConflictCardWidget(QFrame):
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
 
         # Header Row: File Name & Badge
         header_row = QHBoxLayout()
@@ -47,14 +48,14 @@ class ConflictCardWidget(QFrame):
 
         rel_path = self.conflict.get("relative_path", "Unknown file")
         file_name = os.path.basename(rel_path)
-        title_lbl = QLabel(f"<b>{file_name}</b> <font color='#94A3B8'>({rel_path})</font>")
-        title_lbl.setStyleSheet("font-size: 14px; color: #FFFFFF;")
+        title_lbl = QLabel(f"<b>{file_name}</b> <font color='#A58C7D'>({rel_path})</font>")
+        title_lbl.setStyleSheet("font-size: 14px; color: #E1E2E8;")
         header_row.addWidget(title_lbl)
         header_row.addStretch()
 
         open_folder_btn = QPushButton("📁 Open Folder")
         open_folder_btn.setObjectName("secondaryBtn")
-        open_folder_btn.setStyleSheet("padding: 4px 8px; font-size: 11px;")
+        open_folder_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         open_folder_btn.clicked.connect(self._open_folder)
         header_row.addWidget(open_folder_btn)
 
@@ -62,7 +63,7 @@ class ConflictCardWidget(QFrame):
 
         # Comparison 2-Column Split Box
         comp_frame = QFrame()
-        comp_frame.setStyleSheet("background-color: #0F172A; border-radius: 6px; padding: 8px;")
+        comp_frame.setStyleSheet("background-color: #0B0E12; border: 1px solid #272A2E; border-radius: 8px; padding: 12px;")
         comp_layout = QHBoxLayout(comp_frame)
         comp_layout.setSpacing(16)
 
@@ -70,7 +71,7 @@ class ConflictCardWidget(QFrame):
         local_col = QVBoxLayout()
         local_col.setSpacing(4)
         local_title = QLabel(f"<b>🖥️ {self.current_device_name} (Local Version)</b>")
-        local_title.setStyleSheet("color: #38BDF8; font-size: 12px;")
+        local_title.setStyleSheet("color: #FFB786; font-size: 12px;")
         local_col.addWidget(local_title)
 
         loc_time = self.conflict.get("local_modified_at", "")
@@ -79,13 +80,13 @@ class ConflictCardWidget(QFrame):
         except Exception:
             loc_time_str = loc_time[:19]
         loc_time_lbl = QLabel(f"Modified: {loc_time_str}")
-        loc_time_lbl.setStyleSheet("color: #CBD5E1; font-size: 11px;")
+        loc_time_lbl.setStyleSheet("color: #E1E2E8; font-size: 11px;")
         local_col.addWidget(loc_time_lbl)
 
         loc_sz = self.conflict.get("local_size_bytes", 0)
         loc_sz_str = f"{round(loc_sz / 1024, 1)} KB" if loc_sz < 1024**2 else f"{round(loc_sz / (1024**2), 2)} MB"
         loc_sz_lbl = QLabel(f"Size: {loc_sz_str}")
-        loc_sz_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        loc_sz_lbl.setStyleSheet("color: #A58C7D; font-size: 11px;")
         local_col.addWidget(loc_sz_lbl)
 
         comp_layout.addLayout(local_col, stretch=1)
@@ -93,7 +94,7 @@ class ConflictCardWidget(QFrame):
         # Divider
         divider = QFrame()
         divider.setFrameShape(QFrame.VLine)
-        divider.setStyleSheet("color: #334155;")
+        divider.setStyleSheet("color: #272A2E;")
         comp_layout.addWidget(divider)
 
         # Right Column: Remote Version
@@ -101,7 +102,7 @@ class ConflictCardWidget(QFrame):
         remote_col.setSpacing(4)
         remote_dev = self.conflict.get("remote_device_name") or "Connected Computer"
         remote_title = QLabel(f"<b>☁️ {remote_dev} (Remote Version)</b>")
-        remote_title.setStyleSheet("color: #F59E0B; font-size: 12px;")
+        remote_title.setStyleSheet("color: #F6821F; font-size: 12px;")
         remote_col.addWidget(remote_title)
 
         rem_time = self.conflict.get("remote_modified_at", "")
@@ -110,13 +111,13 @@ class ConflictCardWidget(QFrame):
         except Exception:
             rem_time_str = rem_time[:19]
         rem_time_lbl = QLabel(f"Modified: {rem_time_str}")
-        rem_time_lbl.setStyleSheet("color: #CBD5E1; font-size: 11px;")
+        rem_time_lbl.setStyleSheet("color: #E1E2E8; font-size: 11px;")
         remote_col.addWidget(rem_time_lbl)
 
         rem_sz = self.conflict.get("remote_size_bytes", 0)
         rem_sz_str = f"{round(rem_sz / 1024, 1)} KB" if rem_sz < 1024**2 else f"{round(rem_sz / (1024**2), 2)} MB"
         rem_sz_lbl = QLabel(f"Size: {rem_sz_str}")
-        rem_sz_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        rem_sz_lbl.setStyleSheet("color: #A58C7D; font-size: 11px;")
         remote_col.addWidget(rem_sz_lbl)
 
         comp_layout.addLayout(remote_col, stretch=1)
@@ -129,15 +130,18 @@ class ConflictCardWidget(QFrame):
 
         btn_keep_local = QPushButton(f"Keep {self.current_device_name}")
         btn_keep_local.setObjectName("secondaryBtn")
+        btn_keep_local.setStyleSheet("padding: 6px 12px; font-size: 12px;")
         btn_keep_local.clicked.connect(lambda: self.resolve_requested.emit(self.conflict_id, ConflictResolution.KEEP_LOCAL.value))
         action_row.addWidget(btn_keep_local)
 
         btn_keep_remote = QPushButton(f"Keep {remote_dev}")
         btn_keep_remote.setObjectName("secondaryBtn")
+        btn_keep_remote.setStyleSheet("padding: 6px 12px; font-size: 12px;")
         btn_keep_remote.clicked.connect(lambda: self.resolve_requested.emit(self.conflict_id, ConflictResolution.KEEP_REMOTE.value))
         action_row.addWidget(btn_keep_remote)
 
         btn_keep_both = QPushButton("Keep Both (Recommended)")
+        btn_keep_both.setStyleSheet("padding: 6px 14px; font-size: 12px; font-weight: 600;")
         btn_keep_both.clicked.connect(lambda: self.resolve_requested.emit(self.conflict_id, ConflictResolution.KEEP_BOTH.value))
         action_row.addWidget(btn_keep_both)
 
@@ -180,21 +184,30 @@ class ConflictCenterDialog(QDialog):
         self.current_device_name = current_device_name
 
         self.setWindowTitle("Conflict Center")
-        self.resize(700, 550)
+        self.resize(720, 560)
         self._init_ui()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(14)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
         # Header
         header_card = QFrame()
-        header_card.setObjectName("cardWidget")
+        header_card.setObjectName("heroCardWidget")
+        header_card.setStyleSheet("""
+            QFrame#heroCardWidget {
+                background-color: #1D2024;
+                border: 1px solid #272A2E;
+                border-radius: 12px;
+                padding: 16px;
+            }
+        """)
         hl = QVBoxLayout(header_card)
 
         count = len(self.conflicts)
         title = QLabel(f"⚠️ Conflict Center — {count} Unresolved Conflict{'s' if count != 1 else ''}")
-        title.setStyleSheet("font-size: 15px; font-weight: bold; color: #FFFFFF;")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; color: #E1E2E8;")
         hl.addWidget(title)
 
         desc = QLabel(
@@ -202,7 +215,7 @@ class ConflictCenterDialog(QDialog):
             "Choose which version to keep, or keep both to ensure no data is lost."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        desc.setStyleSheet("color: #A58C7D; font-size: 12px;")
         hl.addWidget(desc)
         main_layout.addWidget(header_card)
 
@@ -226,6 +239,8 @@ class ConflictCenterDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         close_btn = QPushButton("Close")
+        close_btn.setObjectName("secondaryBtn")
+        close_btn.setStyleSheet("padding: 8px 16px;")
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         main_layout.addLayout(btn_row)
@@ -239,7 +254,7 @@ class ConflictCenterDialog(QDialog):
         if not self.conflicts:
             empty_lbl = QLabel("✓ No unresolved conflicts! All files are synchronized.")
             empty_lbl.setAlignment(Qt.AlignCenter)
-            empty_lbl.setStyleSheet("color: #10B981; font-size: 14px; padding: 40px;")
+            empty_lbl.setStyleSheet("color: #4AE176; font-size: 14px; padding: 40px;")
             self.cards_layout.insertWidget(0, empty_lbl)
             return
 

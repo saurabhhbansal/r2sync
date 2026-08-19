@@ -1,10 +1,11 @@
-"""Jobs view displaying configured backup jobs and control actions."""
+"""Backups view displaying configured backup jobs and actions matching Stitch Design."""
 
 from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -18,7 +19,7 @@ from r2sync.core.models import BackupJob
 
 
 class JobCardWidget(QFrame):
-    """Card widget representing an individual backup job."""
+    """Card widget representing an individual backup job matching Stitch Backups design."""
 
     run_clicked = Signal(int)
     edit_clicked = Signal(int)
@@ -34,36 +35,53 @@ class JobCardWidget(QFrame):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
 
-        # Top row: Checkbox/Title & Action Buttons
+        # -------------------------------------------------------------
+        # Top Row: Checkbox/Folder Icon + Title + Status Badge + Actions
+        # -------------------------------------------------------------
         top_row = QHBoxLayout()
+        top_row.setSpacing(10)
 
+        # Enable/Disable toggle checkbox
         self.enable_cb = QCheckBox()
         self.enable_cb.setChecked(bool(self.job_data.get("enabled", True)))
         self.enable_cb.toggled.connect(lambda chk: self.toggle_clicked.emit(self.job_id, chk))
         top_row.addWidget(self.enable_cb)
 
+        # Folder Icon in Brand Orange
+        folder_icon = QLabel("📁")
+        folder_icon.setStyleSheet("font-size: 18px;")
+        top_row.addWidget(folder_icon)
+
+        # Job Title
         title_lbl = QLabel(self.job_data.get("name", "Unnamed Job"))
-        title_lbl.setStyleSheet("font-size: 15px; font-weight: bold; color: #FFFFFF;")
+        title_lbl.setStyleSheet("font-size: 15px; font-weight: 600; color: #E1E2E8;")
         top_row.addWidget(title_lbl)
 
-        # Status badge
-        last_status = self.job_data.get("last_status") or "New"
-        status_lbl = QLabel(f" {last_status.upper()} ")
-        if last_status.lower() == "completed":
-            status_lbl.setStyleSheet("background-color: #065F46; color: #34D399; border-radius: 4px; font-size: 11px; font-weight: bold;")
-        elif last_status.lower() == "failed":
-            status_lbl.setStyleSheet("background-color: #7F1D1D; color: #F87171; border-radius: 4px; font-size: 11px; font-weight: bold;")
+        # Status Badge Pill
+        enabled = self.job_data.get("enabled", True)
+        last_status = (self.job_data.get("last_status") or "Active").upper()
+
+        status_lbl = QLabel()
+        if not enabled:
+            status_lbl.setText("● PAUSED")
+            status_lbl.setStyleSheet("background-color: #272A2E; color: #A58C7D; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 500;")
+        elif last_status == "FAILED":
+            status_lbl.setText("● FAILED")
+            status_lbl.setStyleSheet("background-color: rgba(220, 38, 38, 0.15); color: #FFB4AB; border: 1px solid rgba(220, 38, 38, 0.4); border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 600;")
         else:
-            status_lbl.setStyleSheet("background-color: #1E293B; color: #94A3B8; border-radius: 4px; font-size: 11px;")
+            status_lbl.setText("● ACTIVE")
+            status_lbl.setStyleSheet("background-color: rgba(74, 225, 118, 0.12); color: #4AE176; border: 1px solid rgba(74, 225, 118, 0.3); border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 600;")
         top_row.addWidget(status_lbl)
 
         top_row.addStretch()
 
-        # Actions
+        # Action Buttons
         run_btn = QPushButton("▶ Run Now")
-        run_btn.setStyleSheet("padding: 5px 10px; font-size: 12px;")
+        run_btn.setObjectName("secondaryBtn")
+        run_btn.setStyleSheet("padding: 5px 12px; font-size: 12px; font-weight: 500;")
         run_btn.clicked.connect(lambda: self.run_clicked.emit(self.job_id))
         top_row.addWidget(run_btn)
 
@@ -81,59 +99,94 @@ class JobCardWidget(QFrame):
 
         layout.addLayout(top_row)
 
-        # Middle row: Paths
-        paths_row = QHBoxLayout()
+        # -------------------------------------------------------------
+        # Middle 2-Column Grid: Local Path & Remote Target
+        # -------------------------------------------------------------
+        paths_grid = QGridLayout()
+        paths_grid.setSpacing(12)
+
+        # Local Path Box
         src = self.job_data.get("source_path", "")
+        loc_box = QFrame()
+        loc_box.setObjectName("codeBoxWidget")
+        loc_layout = QVBoxLayout(loc_box)
+        loc_layout.setContentsMargins(8, 6, 8, 6)
+        loc_layout.setSpacing(2)
+        loc_title = QLabel("LOCAL PATH")
+        loc_title.setStyleSheet("color: #A58C7D; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;")
+        loc_path = QLabel(src)
+        loc_path.setStyleSheet("color: #E1E2E8; font-family: monospace; font-size: 12px;")
+        loc_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        loc_layout.addWidget(loc_title)
+        loc_layout.addWidget(loc_path)
+        paths_grid.addWidget(loc_box, 0, 0)
+
+        # Remote Target Box
         bkt = self.job_data.get("bucket_name", "")
         pfx = self.job_data.get("remote_prefix", "")
         dest = f"r2:{bkt}/{pfx}" if pfx else f"r2:{bkt}"
 
-        path_text = QLabel(f"📁 <b>Source:</b> {src}  →  ☁️ <b>Target:</b> {dest}")
-        path_text.setStyleSheet("color: #CBD5E1; font-size: 12px;")
-        path_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        paths_row.addWidget(path_text)
-        layout.addLayout(paths_row)
+        rem_box = QFrame()
+        rem_box.setObjectName("codeBoxWidget")
+        rem_layout = QVBoxLayout(rem_box)
+        rem_layout.setContentsMargins(8, 6, 8, 6)
+        rem_layout.setSpacing(2)
+        rem_title = QLabel("REMOTE DESTINATION")
+        rem_title.setStyleSheet("color: #A58C7D; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;")
+        rem_path = QLabel(dest)
+        rem_path.setStyleSheet("color: #FFB786; font-family: monospace; font-size: 12px;")
+        rem_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        rem_layout.addWidget(rem_title)
+        rem_layout.addWidget(rem_path)
+        paths_grid.addWidget(rem_box, 0, 1)
 
-        # Bottom row: Schedule & Last Run
-        meta_row = QHBoxLayout()
+        layout.addLayout(paths_grid)
+
+        # -------------------------------------------------------------
+        # Footer Row: Schedule + Last Run + Transferred Meta
+        # -------------------------------------------------------------
+        meta_frame = QFrame()
+        meta_frame.setStyleSheet("border-top: 1px solid #272A2E; padding-top: 8px;")
+        meta_row = QHBoxLayout(meta_frame)
+        meta_row.setContentsMargins(0, 4, 0, 0)
+        meta_row.setSpacing(16)
+
+        # Schedule
         sched_type = self.job_data.get("schedule_type", "daily").title()
         if self.job_data.get("schedule_type") == "daily":
             sched_type += f" at {self.job_data.get('schedule_time_of_day')}"
         elif self.job_data.get("schedule_type") == "interval":
             sched_type += f" (every {self.job_data.get('schedule_interval_minutes')}m)"
 
+        sched_lbl = QLabel(f"⏰  {sched_type}")
+        sched_lbl.setStyleSheet("color: #A58C7D; font-size: 12px;")
+        meta_row.addWidget(sched_lbl)
+
+        # Last Run
         last_run = self.job_data.get("last_run_at")
         if last_run:
             try:
                 last_str = datetime.fromisoformat(last_run).strftime("%b %d, %H:%M")
             except Exception:
                 last_str = last_run[:16]
+            last_lbl = QLabel(f"📜  Last: {last_str} <font color='#4AE176'>✓ Completed</font>")
         else:
-            last_str = "Never"
+            last_lbl = QLabel("📜  Last: Never")
+        last_lbl.setStyleSheet("color: #A58C7D; font-size: 12px;")
+        meta_row.addWidget(last_lbl)
 
-        next_run = self.job_data.get("next_run_at")
-        if next_run:
-            try:
-                next_str = datetime.fromisoformat(next_run).strftime("%b %d, %H:%M")
-            except Exception:
-                next_str = next_run[:16]
-        else:
-            next_str = "None"
-
-        meta_text = QLabel(f"⏰ Schedule: <b>{sched_type}</b> | Last Run: <b>{last_str}</b> | Next Run: <b>{next_str}</b>")
-        meta_text.setStyleSheet("color: #94A3B8; font-size: 11px;")
-        meta_row.addWidget(meta_text)
         meta_row.addStretch()
 
+        # Mode Badge
         mode_badge = QLabel(f"Mode: {self.job_data.get('backup_mode', 'sync').upper()}")
-        mode_badge.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 500;")
+        mode_badge.setStyleSheet("color: #FFB786; font-size: 11px; font-weight: 600;")
         meta_row.addWidget(mode_badge)
 
-        layout.addLayout(meta_row)
+        layout.addWidget(meta_frame)
 
 
 class JobsView(QWidget):
-    """View managing all backup jobs."""
+    """View managing all backup jobs matching Stitch Backups design."""
 
     create_job_requested = Signal()
     run_job_requested = Signal(int)
@@ -143,6 +196,7 @@ class JobsView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.jobs_list = []
         self._init_ui()
 
     def _init_ui(self):
@@ -150,24 +204,38 @@ class JobsView(QWidget):
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(16)
 
-        # Header
+        # -------------------------------------------------------------
+        # Header with Stitch action buttons
+        # -------------------------------------------------------------
         header = QHBoxLayout()
         title_box = QVBoxLayout()
-        title = QLabel("Backup Jobs")
+        title_box.setSpacing(2)
+
+        title = QLabel("Backups")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Configure folders, sync schedules, and Cloudflare R2 destinations")
+        subtitle = QLabel("Automatically protect folders to Cloudflare R2.")
         subtitle.setObjectName("subtitleLabel")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header.addLayout(title_box)
         header.addStretch()
 
-        add_btn = QPushButton("➕ Add Backup Job")
+        run_all_btn = QPushButton("Run All")
+        run_all_btn.setObjectName("secondaryBtn")
+        run_all_btn.setStyleSheet("padding: 8px 16px; font-size: 13px;")
+        run_all_btn.clicked.connect(self._run_all_jobs)
+        header.addWidget(run_all_btn)
+
+        add_btn = QPushButton("➕ Create Backup")
+        add_btn.setStyleSheet("padding: 8px 16px; font-size: 13px; font-weight: 600;")
         add_btn.clicked.connect(self.create_job_requested.emit)
         header.addWidget(add_btn)
+
         main_layout.addLayout(header)
 
+        # -------------------------------------------------------------
         # Scroll Area for Job Cards
+        # -------------------------------------------------------------
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
@@ -181,7 +249,14 @@ class JobsView(QWidget):
         self.scroll.setWidget(self.cards_container)
         main_layout.addWidget(self.scroll)
 
+    def _run_all_jobs(self):
+        for j in self.jobs_list:
+            if j.get("enabled", True) and j.get("id"):
+                self.run_job_requested.emit(j.get("id"))
+
     def set_jobs(self, jobs: list):
+        self.jobs_list = jobs or []
+
         # Clear existing cards
         while self.cards_layout.count() > 1:
             item = self.cards_layout.takeAt(0)
@@ -193,13 +268,14 @@ class JobsView(QWidget):
             empty_frame.setObjectName("cardWidget")
             el = QVBoxLayout(empty_frame)
             el.setAlignment(Qt.AlignCenter)
-            el.setSpacing(8)
+            el.setSpacing(10)
 
             lbl1 = QLabel("📁 No Backup Jobs Configured")
-            lbl1.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
+            lbl1.setStyleSheet("font-size: 16px; font-weight: 600; color: #E1E2E8;")
             lbl2 = QLabel("Create your first backup job to begin protecting your files to Cloudflare R2.")
-            lbl2.setStyleSheet("color: #94A3B8;")
-            btn = QPushButton("➕ Create First Backup Job")
+            lbl2.setStyleSheet("color: #A58C7D; font-size: 13px;")
+            btn = QPushButton("➕ Create First Backup")
+            btn.setStyleSheet("padding: 8px 20px; font-size: 13px; font-weight: 600;")
             btn.clicked.connect(self.create_job_requested.emit)
 
             el.addWidget(lbl1)

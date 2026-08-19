@@ -1,4 +1,4 @@
-"""Dialog for creating and adding a new Sync folder dataset."""
+"""Dialog for creating and adding a new Sync folder dataset matching Stitch Design."""
 
 import os
 from pathlib import Path
@@ -31,7 +31,7 @@ from r2sync.core.models import SyncDataset, SyncScheduleMode, SyncStatus
 
 
 class AddSyncDialog(QDialog):
-    """Dialog for creating a new Multi-PC Sync dataset."""
+    """Dialog for creating a new Multi-PC Sync dataset matching Stitch Design."""
 
     def __init__(
         self,
@@ -46,28 +46,37 @@ class AddSyncDialog(QDialog):
         self.initial_action = "merge"
 
         self.setWindowTitle("Add Sync Folder")
-        self.resize(560, 640)
+        self.resize(580, 640)
         self._init_ui()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(14)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
         # Header Info Banner
         info_card = QFrame()
-        info_card.setObjectName("cardWidget")
+        info_card.setObjectName("heroCardWidget")
+        info_card.setStyleSheet("""
+            QFrame#heroCardWidget {
+                background-color: #1D2024;
+                border: 1px solid #272A2E;
+                border-radius: 12px;
+                padding: 16px;
+            }
+        """)
         info_layout = QVBoxLayout(info_card)
         info_layout.setSpacing(4)
 
-        info_title = QLabel("🔄 Continuous Multi-PC Synchronization")
-        info_title.setStyleSheet("font-weight: bold; color: #38BDF8; font-size: 14px;")
+        info_title = QLabel("🔄  Continuous Multi-PC Synchronization")
+        info_title.setStyleSheet("font-weight: 600; color: #FFB786; font-size: 14px;")
         info_layout.addWidget(info_title)
 
         info_desc = QLabel(
             "Sync keeps your selected local folder continuously up to date across all your connected computers through your private Cloudflare R2 storage."
         )
         info_desc.setWordWrap(True)
-        info_desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        info_desc.setStyleSheet("color: #A58C7D; font-size: 12px;")
         info_layout.addWidget(info_desc)
         main_layout.addWidget(info_card)
 
@@ -88,6 +97,7 @@ class AddSyncDialog(QDialog):
         self.source_input.textChanged.connect(self._on_path_changed)
         browse_btn = QPushButton("📁 Browse...")
         browse_btn.setObjectName("secondaryBtn")
+        browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_folder)
         folder_row.addWidget(self.source_input)
         folder_row.addWidget(browse_btn)
@@ -95,7 +105,7 @@ class AddSyncDialog(QDialog):
 
         # Overlap Warning Label (Hidden by default)
         self.overlap_warn_lbl = QLabel("")
-        self.overlap_warn_lbl.setStyleSheet("color: #F59E0B; font-size: 11px; font-weight: bold;")
+        self.overlap_warn_lbl.setStyleSheet("color: #F6821F; font-size: 11px; font-weight: 600;")
         self.overlap_warn_lbl.setVisible(False)
         form.addRow("", self.overlap_warn_lbl)
 
@@ -108,6 +118,7 @@ class AddSyncDialog(QDialog):
 
         new_bucket_btn = QPushButton("➕ New Bucket")
         new_bucket_btn.setObjectName("secondaryBtn")
+        new_bucket_btn.setStyleSheet("padding: 6px 12px;")
         new_bucket_btn.clicked.connect(self._create_new_bucket)
 
         bucket_row.addWidget(self.bucket_combo, stretch=1)
@@ -119,10 +130,10 @@ class AddSyncDialog(QDialog):
         # 4. Initial Folder Content Handling (Data Protection)
         self.nonempty_group = QGroupBox("Initial Folder Setup")
         ne_layout = QVBoxLayout(self.nonempty_group)
-        ne_layout.setSpacing(6)
+        ne_layout.setSpacing(8)
 
         ne_label = QLabel("How should r2sync handle existing files in this folder?")
-        ne_label.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        ne_label.setStyleSheet("color: #E1E2E8; font-size: 12px;")
         ne_layout.addWidget(ne_label)
 
         self.radio_merge = QRadioButton("Merge with cloud dataset (Safest default)")
@@ -166,9 +177,11 @@ class AddSyncDialog(QDialog):
         btn_layout.addStretch()
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.setStyleSheet("padding: 8px 16px;")
         cancel_btn.clicked.connect(self.reject)
 
         self.save_btn = QPushButton("Start Synchronization")
+        self.save_btn.setStyleSheet("padding: 8px 18px; font-weight: 600;")
         self.save_btn.clicked.connect(self._validate_and_save)
 
         btn_layout.addWidget(cancel_btn)

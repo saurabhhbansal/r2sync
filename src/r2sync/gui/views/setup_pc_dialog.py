@@ -1,4 +1,4 @@
-"""Dialog for discovering and joining existing remote datasets ('Set Up This PC')."""
+"""Dialog for discovering and joining existing remote datasets ('Set Up This PC') matching Stitch Design."""
 
 import os
 from pathlib import Path
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 
 class SetupPCDialog(QDialog):
-    """Wizard/Dialog for connecting this PC to an existing remote Sync dataset."""
+    """Wizard/Dialog for connecting this PC to an existing remote Sync dataset matching Stitch Design."""
 
     def __init__(self, discovered_datasets: List[Dict[str, Any]], parent=None):
         super().__init__(parent)
@@ -35,20 +35,30 @@ class SetupPCDialog(QDialog):
         self.chosen_local_path: str = ""
 
         self.setWindowTitle("Set Up This Computer")
-        self.resize(640, 520)
+        self.resize(660, 540)
         self._init_ui()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(14)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
         # Header Info Banner
         info_card = QFrame()
-        info_card.setObjectName("cardWidget")
+        info_card.setObjectName("heroCardWidget")
+        info_card.setStyleSheet("""
+            QFrame#heroCardWidget {
+                background-color: #1D2024;
+                border: 1px solid #272A2E;
+                border-radius: 12px;
+                padding: 16px;
+            }
+        """)
         info_layout = QVBoxLayout(info_card)
+        info_layout.setSpacing(4)
 
-        title = QLabel("💻 Set Up Synchronized Folders on This PC")
-        title.setStyleSheet("font-size: 15px; font-weight: bold; color: #38BDF8;")
+        title = QLabel("💻  Set Up Synchronized Folders on This PC")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; color: #FFB786;")
         info_layout.addWidget(title)
 
         desc = QLabel(
@@ -56,7 +66,7 @@ class SetupPCDialog(QDialog):
             "Select a dataset below to synchronize its files to this computer."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        desc.setStyleSheet("color: #A58C7D; font-size: 12px;")
         info_layout.addWidget(desc)
         main_layout.addWidget(info_card)
 
@@ -64,7 +74,10 @@ class SetupPCDialog(QDialog):
         table_frame = QFrame()
         table_frame.setObjectName("cardWidget")
         table_layout = QVBoxLayout(table_frame)
-        table_layout.addWidget(QLabel("<b>Available Remote Datasets:</b>"))
+        table_layout.setSpacing(10)
+        t_lbl = QLabel("Available Remote Datasets:")
+        t_lbl.setStyleSheet("font-weight: 600; color: #E1E2E8;")
+        table_layout.addWidget(t_lbl)
 
         self.datasets_table = QTableWidget(0, 4)
         self.datasets_table.setHorizontalHeaderLabels([
@@ -93,6 +106,7 @@ class SetupPCDialog(QDialog):
         self.local_input.setPlaceholderText("Select destination folder on this computer")
         browse_btn = QPushButton("📁 Browse...")
         browse_btn.setObjectName("secondaryBtn")
+        browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_folder)
         folder_row.addWidget(self.local_input)
         folder_row.addWidget(browse_btn)
@@ -105,10 +119,12 @@ class SetupPCDialog(QDialog):
         btn_layout.addStretch()
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.setStyleSheet("padding: 8px 16px;")
         cancel_btn.clicked.connect(self.reject)
 
         self.start_btn = QPushButton("Start Initial Sync")
         self.start_btn.setEnabled(False)
+        self.start_btn.setStyleSheet("padding: 8px 18px; font-weight: 600;")
         self.start_btn.clicked.connect(self._validate_and_accept)
 
         btn_layout.addWidget(cancel_btn)
@@ -146,7 +162,6 @@ class SetupPCDialog(QDialog):
         if 0 <= row < len(self.discovered):
             self.selected_dataset = self.discovered[row]
             ds_name = self.selected_dataset.get("name", "SyncFolder")
-            # Suggest default local path
             default_path = str(Path.home() / ds_name)
             self.local_input.setText(default_path)
             self.start_btn.setEnabled(True)

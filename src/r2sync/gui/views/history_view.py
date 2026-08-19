@@ -1,17 +1,20 @@
-"""History and activity logs view."""
+"""Activity and history view matching Stitch Activity design."""
 
 import os
 from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QDialog,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -34,7 +37,7 @@ class LogViewerDialog(QDialog):
 
         self.text_edit = QPlainTextEdit()
         self.text_edit.setReadOnly(True)
-        self.text_edit.setStyleSheet("font-family: monospace; font-size: 12px; background-color: #0F131D;")
+        self.text_edit.setStyleSheet("font-family: monospace; font-size: 12px; background-color: #0B0E12; border: 1px solid #272A2E; color: #E1E2E8;")
         layout.addWidget(self.text_edit)
 
         # Load file
@@ -68,7 +71,7 @@ class LogViewerDialog(QDialog):
 
 
 class HistoryView(QWidget):
-    """View displaying completed backup runs and detailed file records."""
+    """View displaying completed backup runs and detailed records matching Stitch Activity design."""
 
     refresh_requested = Signal()
     load_transfers_requested = Signal(int)
@@ -76,19 +79,25 @@ class HistoryView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.runs_data = []
+        self.transfers_data = []
+        self.filter_mode = "all"
         self._init_ui()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
-        main_layout.setSpacing(16)
+        main_layout.setSpacing(14)
 
-        # Header
+        # -------------------------------------------------------------
+        # Header & Actions
+        # -------------------------------------------------------------
         header = QHBoxLayout()
         title_box = QVBoxLayout()
-        title = QLabel("Activity & Run History")
+        title_box.setSpacing(2)
+
+        title = QLabel("Activity")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Inspect previous backup runs, file transfer records, and sync activity logs")
+        subtitle = QLabel("Review your recent sync and backup events.")
         subtitle.setObjectName("subtitleLabel")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -97,110 +106,183 @@ class HistoryView(QWidget):
 
         refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.setObjectName("secondaryBtn")
+        refresh_btn.setStyleSheet("padding: 8px 14px; font-size: 13px;")
         refresh_btn.clicked.connect(self.refresh_requested.emit)
         header.addWidget(refresh_btn)
+
         main_layout.addLayout(header)
 
-        from PySide6.QtWidgets import QTabWidget
-        self.tabs = QTabWidget()
+        # -------------------------------------------------------------
+        # Filter Chips (Stitch Component: All, Backups, Sync, Errors)
+        # -------------------------------------------------------------
+        chips_row = QHBoxLayout()
+        chips_row.setSpacing(8)
 
-        # TAB 1: Backup Runs & File Transfers
-        tab1_widget = QWidget()
-        tab1_layout = QVBoxLayout(tab1_widget)
-        tab1_layout.setContentsMargins(0, 8, 0, 0)
+        self.chip_group = QButtonGroup(self)
+        self.chip_group.setExclusive(True)
 
-        # Splitter: Top (Runs table), Bottom (File transfers in selected run)
-        splitter = QSplitter(Qt.Vertical)
+        for idx, (label, mode) in enumerate([
+            ("All", "all"),
+            ("Backups", "backup"),
+            ("Sync", "sync"),
+            ("Errors", "error"),
+        ]):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setObjectName("chipBtn")
+            if idx == 0:
+                btn.setChecked(True)
+            btn.clicked.connect(lambda checked, m=mode: self._on_filter_changed(m))
+            self.chip_group.addButton(btn, idx)
+            chips_row.addWidget(btn)
+
+        chips_row.addStretch()
+        main_layout.addLayout(chips_row)
+
+        # -------------------------------------------------------------
+        # 2-Pane Splitter: Left (Runs / Events), Right (Drawer Details)
+        # -------------------------------------------------------------
+        splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(8)
 
-        # Runs Table Frame
-        runs_frame = QFrame()
-        runs_frame.setObjectName("cardWidget")
-        runs_layout = QVBoxLayout(runs_frame)
-        runs_layout.setSpacing(8)
-        runs_layout.addWidget(QLabel("<b>Backup Execution Runs:</b>"))
+        # Left Pane: Runs Table Card
+        left_frame = QFrame()
+        left_frame.setObjectName("cardWidget")
+        left_layout = QVBoxLayout(left_frame)
+        left_layout.setSpacing(10)
 
-        self.runs_table = QTableWidget(0, 7)
+        self.runs_table = QTableWidget(0, 6)
         self.runs_table.setHorizontalHeaderLabels([
-            "ID", "Job Name", "Status", "Started", "Duration", "Transferred", "Errors"
+            "ID", "Job / Target", "Status", "Started", "Duration", "Transferred"
         ])
         self.runs_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        for col in (0, 2, 3, 4, 5, 6):
+        for col in (0, 2, 3, 4, 5):
             self.runs_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeToContents)
         self.runs_table.verticalHeader().setVisible(False)
         self.runs_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.runs_table.setSelectionMode(QTableWidget.SingleSelection)
         self.runs_table.itemSelectionChanged.connect(self._on_run_selected)
-        runs_layout.addWidget(self.runs_table)
+        left_layout.addWidget(self.runs_table)
 
-        splitter.addWidget(runs_frame)
+        splitter.addWidget(left_frame)
 
-        # File Transfers Frame
-        transfers_frame = QFrame()
-        transfers_frame.setObjectName("cardWidget")
-        transfers_layout = QVBoxLayout(transfers_frame)
-        transfers_layout.setSpacing(8)
+        # Right Pane: Activity Details Drawer (Stitch Drawer Component)
+        self.drawer_frame = QFrame()
+        self.drawer_frame.setObjectName("cardWidget")
+        self.drawer_frame.setMinimumWidth(320)
+        self.drawer_frame.setMaximumWidth(400)
+        drawer_layout = QVBoxLayout(self.drawer_frame)
+        drawer_layout.setSpacing(14)
+        drawer_layout.setContentsMargins(16, 16, 16, 16)
 
-        tf_header = QHBoxLayout()
-        self.transfers_title = QLabel("<b>Files in Selected Run:</b>")
-        tf_header.addWidget(self.transfers_title)
-        tf_header.addStretch()
+        # Drawer Header
+        d_header = QHBoxLayout()
+        d_title = QLabel("Activity Details")
+        d_title.setStyleSheet("font-size: 15px; font-weight: 600; color: #E1E2E8;")
+        d_header.addWidget(d_title)
+        d_header.addStretch()
+        drawer_layout.addLayout(d_header)
 
-        self.view_log_btn = QPushButton("📄 View Raw Log")
-        self.view_log_btn.setObjectName("secondaryBtn")
-        self.view_log_btn.setEnabled(False)
-        self.view_log_btn.clicked.connect(self._open_log_viewer)
-        tf_header.addWidget(self.view_log_btn)
-        transfers_layout.addLayout(tf_header)
+        # Event Highlight Box
+        self.event_hl_box = QFrame()
+        self.event_hl_box.setStyleSheet("background-color: #111418; border: 1px solid #272A2E; border-radius: 8px; padding: 10px;")
+        hl_l = QHBoxLayout(self.event_hl_box)
+        hl_l.setSpacing(10)
 
-        self.transfers_table = QTableWidget(0, 4)
-        self.transfers_table.setHorizontalHeaderLabels(["File Path", "Status", "Size", "Error / Details"])
+        self.hl_icon = QLabel("✓")
+        self.hl_icon.setAlignment(Qt.AlignCenter)
+        self.hl_icon.setFixedSize(36, 36)
+        self.hl_icon.setStyleSheet("background-color: rgba(74, 225, 118, 0.12); color: #4AE176; border-radius: 18px; font-size: 16px; font-weight: bold;")
+        hl_l.addWidget(self.hl_icon)
+
+        hl_text = QVBoxLayout()
+        hl_text.setSpacing(2)
+        self.hl_name = QLabel("Select an event")
+        self.hl_name.setStyleSheet("font-size: 14px; font-weight: 600; color: #E1E2E8;")
+        self.hl_sub = QLabel("No event selected")
+        self.hl_sub.setStyleSheet("font-size: 11px; color: #A58C7D;")
+        hl_text.addWidget(self.hl_name)
+        hl_text.addWidget(self.hl_sub)
+        hl_l.addLayout(hl_text)
+        hl_l.addStretch()
+
+        drawer_layout.addWidget(self.event_hl_box)
+
+        # Metadata Grid
+        meta_grid = QGridLayout()
+        meta_grid.setSpacing(10)
+
+        meta_grid.addWidget(QLabel("Started:"), 0, 0)
+        self.d_started = QLabel("—")
+        self.d_started.setStyleSheet("color: #E1E2E8; font-weight: 500;")
+        meta_grid.addWidget(self.d_started, 0, 1)
+
+        meta_grid.addWidget(QLabel("Duration:"), 1, 0)
+        self.d_duration = QLabel("—")
+        self.d_duration.setStyleSheet("color: #E1E2E8; font-weight: 500;")
+        meta_grid.addWidget(self.d_duration, 1, 1)
+
+        meta_grid.addWidget(QLabel("Transferred:"), 2, 0)
+        self.d_transferred = QLabel("—")
+        self.d_transferred.setStyleSheet("color: #FFB786; font-weight: 500;")
+        meta_grid.addWidget(self.d_transferred, 2, 1)
+
+        drawer_layout.addLayout(meta_grid)
+
+        # Affected Files Preview Header
+        files_hdr = QLabel("AFFECTED FILES")
+        files_hdr.setStyleSheet("color: #A58C7D; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;")
+        drawer_layout.addWidget(files_hdr)
+
+        self.transfers_table = QTableWidget(0, 2)
+        self.transfers_table.setHorizontalHeaderLabels(["File Path", "Size"])
         self.transfers_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.transfers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.transfers_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.transfers_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.transfers_table.verticalHeader().setVisible(False)
         self.transfers_table.setSelectionBehavior(QTableWidget.SelectRows)
-        transfers_layout.addWidget(self.transfers_table)
+        drawer_layout.addWidget(self.transfers_table)
 
-        splitter.addWidget(transfers_frame)
-        splitter.setSizes([260, 260])
-        tab1_layout.addWidget(splitter)
-        self.tabs.addTab(tab1_widget, "📦 Backup Runs")
+        # View Log Action Button
+        self.view_log_btn = QPushButton("📄  View Technical Details")
+        self.view_log_btn.setObjectName("secondaryBtn")
+        self.view_log_btn.setEnabled(False)
+        self.view_log_btn.setStyleSheet("padding: 8px 12px; font-size: 12px;")
+        self.view_log_btn.clicked.connect(self._open_log_viewer)
+        drawer_layout.addWidget(self.view_log_btn)
 
-        # TAB 2: Activity Events & System Log
-        tab2_widget = QWidget()
-        tab2_layout = QVBoxLayout(tab2_widget)
-        tab2_layout.setContentsMargins(0, 8, 0, 0)
-        tab2_frame = QFrame()
-        tab2_frame.setObjectName("cardWidget")
-        t2_l = QVBoxLayout(tab2_frame)
+        splitter.addWidget(self.drawer_frame)
+        splitter.setSizes([500, 320])
 
-        self.activities_table = QTableWidget(0, 4)
-        self.activities_table.setHorizontalHeaderLabels(["Timestamp", "Level", "Category", "Event Message"])
-        self.activities_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.activities_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.activities_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.activities_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.activities_table.verticalHeader().setVisible(False)
-        self.activities_table.setSelectionBehavior(QTableWidget.SelectRows)
-        t2_l.addWidget(self.activities_table)
-        tab2_layout.addWidget(tab2_frame)
-        self.tabs.addTab(tab2_widget, "📋 Activity Log (Sync & Backups)")
+        main_layout.addWidget(splitter)
 
-        main_layout.addWidget(self.tabs)
-
+    def _on_filter_changed(self, mode: str):
+        self.filter_mode = mode
+        self._populate_runs()
 
     def set_runs(self, runs: list):
         self.runs_data = runs
-        self.runs_table.setRowCount(len(runs))
+        self._populate_runs()
 
-        for row, r in enumerate(runs):
+    def _populate_runs(self):
+        filtered = []
+        for r in self.runs_data:
+            st = (r.get("status") or "").lower()
+            name = (r.get("job_name") or "").lower()
+            if self.filter_mode == "error" and st != "failed":
+                continue
+            elif self.filter_mode == "backup" and "sync" in name:
+                continue
+            elif self.filter_mode == "sync" and "sync" not in name:
+                continue
+            filtered.append(r)
+
+        self.runs_table.setRowCount(len(filtered))
+        for row, r in enumerate(filtered):
             r_id = QTableWidgetItem(f"#{r.get('id', 0)}")
             job_name = QTableWidgetItem(r.get("job_name", ""))
-            
+
             st = r.get("status", "unknown").upper()
-            status_item = QTableWidgetItem(st)
+            status_item = QTableWidgetItem(f"● {st}")
             if st == "COMPLETED":
                 status_item.setForeground(Qt.green)
             elif st == "FAILED":
@@ -210,9 +292,9 @@ class HistoryView(QWidget):
 
             started = r.get("started_at", "")
             try:
-                started_str = datetime.fromisoformat(started).strftime("%b %d, %H:%M:%S")
+                started_str = datetime.fromisoformat(started).strftime("%b %d, %H:%M")
             except Exception:
-                started_str = started[:19]
+                started_str = started[:16]
             started_item = QTableWidgetItem(started_str)
 
             dur = f"{r.get('duration_seconds', 0.0)}s"
@@ -222,20 +304,14 @@ class HistoryView(QWidget):
             trans_str = f"{r.get('files_transferred', 0)} files ({mb} MB)"
             trans_item = QTableWidgetItem(trans_str)
 
-            err_count = r.get("errors_count", 0)
-            err_item = QTableWidgetItem(str(err_count))
-            if err_count > 0:
-                err_item.setForeground(Qt.red)
-
             self.runs_table.setItem(row, 0, r_id)
             self.runs_table.setItem(row, 1, job_name)
             self.runs_table.setItem(row, 2, status_item)
             self.runs_table.setItem(row, 3, started_item)
             self.runs_table.setItem(row, 4, dur_item)
             self.runs_table.setItem(row, 5, trans_item)
-            self.runs_table.setItem(row, 6, err_item)
 
-        if runs and self.runs_table.currentRow() < 0:
+        if filtered and self.runs_table.currentRow() < 0:
             self.runs_table.selectRow(0)
 
     def _on_run_selected(self):
@@ -244,37 +320,56 @@ class HistoryView(QWidget):
             run = self.runs_data[row]
             run_id = run.get("id", 0)
             self.view_log_btn.setEnabled(bool(run.get("log_file_path")))
+
+            # Update drawer
+            job_name = run.get("job_name", "Backup")
+            st = (run.get("status") or "").upper()
+            self.hl_name.setText(job_name)
+
+            if st == "COMPLETED":
+                self.hl_icon.setText("✓")
+                self.hl_icon.setStyleSheet("background-color: rgba(74, 225, 118, 0.12); color: #4AE176; border-radius: 18px; font-size: 16px; font-weight: bold;")
+                self.hl_sub.setText("Completed successfully")
+            elif st == "FAILED":
+                self.hl_icon.setText("✗")
+                self.hl_icon.setStyleSheet("background-color: rgba(220, 38, 38, 0.15); color: #FFB4AB; border-radius: 18px; font-size: 16px; font-weight: bold;")
+                self.hl_sub.setText("Failed / Execution error")
+            else:
+                self.hl_icon.setText("●")
+                self.hl_icon.setStyleSheet("background-color: rgba(56, 189, 248, 0.15); color: #38BDF8; border-radius: 18px; font-size: 16px;")
+                self.hl_sub.setText(f"Status: {st}")
+
+            started = run.get("started_at", "")
+            try:
+                self.d_started.setText(datetime.fromisoformat(started).strftime("%b %d, %H:%M:%S"))
+            except Exception:
+                self.d_started.setText(started[:19])
+
+            self.d_duration.setText(f"{run.get('duration_seconds', 0.0)} seconds")
+
+            mb = round(run.get("bytes_transferred", 0) / (1024 * 1024), 2)
+            self.d_transferred.setText(f"{run.get('files_transferred', 0)} files ({mb} MB)")
+
             self.load_transfers_requested.emit(run_id)
 
     def set_transfers(self, transfers: list):
+        self.transfers_data = transfers
         self.transfers_table.setRowCount(len(transfers))
         for row, t in enumerate(transfers):
-            p_item = QTableWidgetItem(t.get("file_path", ""))
-            
-            st = t.get("status", "")
-            st_item = QTableWidgetItem(st.upper())
-            if st == "transferred":
-                st_item.setForeground(Qt.green)
-            elif st == "deleted":
-                st_item.setForeground(Qt.yellow)
-            elif st == "error":
-                st_item.setForeground(Qt.red)
+            p_item = QTableWidgetItem(os.path.basename(t.get("file_path", "")))
+            p_item.setToolTip(t.get("file_path", ""))
 
             sz = t.get("size_bytes", 0)
             if sz > 1024 * 1024:
-                sz_str = f"{round(sz / (1024*1024), 2)} MB"
+                sz_str = f"{round(sz / (1024*1024), 1)} MB"
             elif sz > 1024:
-                sz_str = f"{round(sz / 1024, 1)} KB"
+                sz_str = f"{round(sz / 1024, 0)} KB"
             else:
                 sz_str = f"{sz} B"
             sz_item = QTableWidgetItem(sz_str)
 
-            err_item = QTableWidgetItem(t.get("error_message") or "")
-
             self.transfers_table.setItem(row, 0, p_item)
-            self.transfers_table.setItem(row, 1, st_item)
-            self.transfers_table.setItem(row, 2, sz_item)
-            self.transfers_table.setItem(row, 3, err_item)
+            self.transfers_table.setItem(row, 1, sz_item)
 
     def _open_log_viewer(self):
         row = self.runs_table.currentRow()
@@ -282,34 +377,3 @@ class HistoryView(QWidget):
             run = self.runs_data[row]
             dlg = LogViewerDialog(run.get("log_file_path", ""), run.get("id", 0), self)
             dlg.exec()
-
-    def set_activities(self, activities: list):
-        self.activities_table.setRowCount(len(activities))
-        for row, a in enumerate(activities):
-            created = a.get("created_at", "")
-            try:
-                created_str = datetime.fromisoformat(created).strftime("%b %d, %H:%M:%S")
-            except Exception:
-                created_str = created[:19]
-            ts_item = QTableWidgetItem(created_str)
-
-            lvl = a.get("level", "INFO").upper()
-            lvl_item = QTableWidgetItem(lvl)
-            if lvl == "ERROR":
-                lvl_item.setForeground(Qt.red)
-            elif lvl == "WARNING":
-                lvl_item.setForeground(Qt.yellow)
-            else:
-                lvl_item.setForeground(Qt.cyan)
-
-            cat = a.get("category", "system").upper()
-            cat_item = QTableWidgetItem(cat)
-
-            msg = a.get("message", "")
-            msg_item = QTableWidgetItem(msg)
-
-            self.activities_table.setItem(row, 0, ts_item)
-            self.activities_table.setItem(row, 1, lvl_item)
-            self.activities_table.setItem(row, 2, cat_item)
-            self.activities_table.setItem(row, 3, msg_item)
-

@@ -1,5 +1,6 @@
-"""Live progress widget displaying real-time backup metrics."""
+"""Live progress widget displaying real-time backup metrics matching Stitch Design."""
 
+from typing import Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -11,11 +12,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from r2sync.core.models import TransferProgressEvent
-
 
 class LiveProgressWidget(QFrame):
-    """Card widget showing ongoing backup transfers."""
+    """Card widget showing ongoing backup and sync transfers."""
 
     cancel_requested = Signal(int)
 
@@ -24,8 +23,10 @@ class LiveProgressWidget(QFrame):
         self.setObjectName("cardWidget")
         self.setStyleSheet("""
             QFrame#cardWidget {
-                border: 1px solid #3B82F6;
-                background-color: #1E293B;
+                border: 1px solid #F6821F;
+                background-color: #1D2024;
+                border-radius: 10px;
+                padding: 14px;
             }
         """)
         self.current_job_id: Optional[int] = None
@@ -34,37 +35,51 @@ class LiveProgressWidget(QFrame):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
+        layout.setContentsMargins(4, 4, 4, 4)
 
         # Header row
         header_row = QHBoxLayout()
         self.title_label = QLabel("⚡ Syncing in Progress...")
-        self.title_label.setStyleSheet("font-weight: bold; color: #38BDF8; font-size: 14px;")
+        self.title_label.setStyleSheet("font-weight: 600; color: #FFB786; font-size: 14px;")
         header_row.addWidget(self.title_label)
         header_row.addStretch()
 
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setObjectName("dangerBtn")
+        self.cancel_btn.setStyleSheet("padding: 4px 12px; font-size: 11px; font-weight: 600;")
         self.cancel_btn.clicked.connect(self._on_cancel_clicked)
         header_row.addWidget(self.cancel_btn)
         layout.addLayout(header_row)
 
-        # Progress bar
+        # Progress bar (sleek 6px)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFixedHeight(12)
+        self.progress_bar.setFixedHeight(6)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #272A2E;
+                border-radius: 3px;
+                height: 6px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F6821F, stop:1 #FFB786);
+                border-radius: 3px;
+            }
+        """)
         layout.addWidget(self.progress_bar)
 
         # Details row
         details_row = QHBoxLayout()
         self.file_label = QLabel("Preparing files...")
-        self.file_label.setStyleSheet("color: #E2E8F0; font-size: 12px;")
+        self.file_label.setStyleSheet("color: #E1E2E8; font-size: 12px; font-family: monospace;")
         details_row.addWidget(self.file_label, stretch=2)
 
         self.stats_label = QLabel("0 MB / 0 MB (0 KB/s)")
         self.stats_label.setAlignment(Qt.AlignRight)
-        self.stats_label.setStyleSheet("color: #94A3B8; font-size: 12px; font-weight: 500;")
+        self.stats_label.setStyleSheet("color: #A58C7D; font-size: 12px; font-weight: 500;")
         details_row.addWidget(self.stats_label, stretch=1)
         layout.addLayout(details_row)
 
@@ -81,8 +96,8 @@ class LiveProgressWidget(QFrame):
         self.progress_bar.setValue(pct)
 
         curr_file = event_data.get("current_file") or "Transferring files..."
-        if len(curr_file) > 50:
-            curr_file = "..." + curr_file[-47:]
+        if len(curr_file) > 55:
+            curr_file = "..." + curr_file[-52:]
         self.file_label.setText(curr_file)
 
         done_mb = round(event_data.get("bytes_transferred", 0) / (1024 * 1024), 1)

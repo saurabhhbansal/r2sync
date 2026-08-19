@@ -1,4 +1,4 @@
-"""Guided One-Time Cloudflare R2 Setup Wizard."""
+"""Guided One-Time Cloudflare R2 Setup Wizard matching Stitch Design."""
 
 import os
 from pathlib import Path
@@ -66,7 +66,15 @@ class WelcomePage(QWizardPage):
         layout.setSpacing(16)
 
         banner = QFrame()
-        banner.setObjectName("cardWidget")
+        banner.setObjectName("heroCardWidget")
+        banner.setStyleSheet("""
+            QFrame#heroCardWidget {
+                background-color: #1D2024;
+                border: 1px solid #272A2E;
+                border-radius: 12px;
+                padding: 20px;
+            }
+        """)
         banner_layout = QVBoxLayout(banner)
 
         top_row = QHBoxLayout()
@@ -75,22 +83,23 @@ class WelcomePage(QWizardPage):
         if icon_path.exists():
             logo_lbl.setPixmap(QPixmap(str(icon_path)).scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         top_row.addWidget(logo_lbl)
-        icon_label = QLabel("Direct-to-Storage Cloudflare R2 Backup")
-        icon_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #38BDF8;")
+        icon_label = QLabel("Direct-to-Storage Cloudflare R2 Backup & Sync")
+        icon_label.setStyleSheet("font-size: 16px; font-weight: 600; color: #F6821F;")
         top_row.addWidget(icon_label)
         top_row.addStretch()
         banner_layout.addLayout(top_row)
 
         desc_text = (
-            "r2sync backs up your critical files and folders directly to your personal "
+            "r2sync backs up and syncs your critical files and folders directly to your personal "
             "Cloudflare R2 storage without developer intermediaries, cloud proxies, or fees.\n\n"
             "• Direct encrypted sync using Rclone\n"
-            "• Credentials secured with Windows Credential Vault / DPAPI\n"
+            "• Zero bandwidth/egress costs with Cloudflare R2\n"
+            "• Credentials secured with OS Credential Vault / DPAPI\n"
             "• Background service keeps schedules running even when GUI is closed"
         )
         desc = QLabel(desc_text)
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #94A3B8; line-height: 1.5;")
+        desc.setStyleSheet("color: #A58C7D; line-height: 1.5; font-size: 13px;")
         banner_layout.addWidget(desc)
 
         layout.addWidget(banner)
@@ -111,7 +120,7 @@ class R2AuthPage(QWizardPage):
         instr_card.setObjectName("cardWidget")
         instr_layout = QVBoxLayout(instr_card)
         instr_title = QLabel("1-Minute Setup Guide:")
-        instr_title.setStyleSheet("font-weight: bold; color: #38BDF8;")
+        instr_title.setStyleSheet("font-weight: 600; color: #FFB786;")
         instr_layout.addWidget(instr_title)
 
         steps = QLabel(
@@ -119,12 +128,13 @@ class R2AuthPage(QWizardPage):
             "2. Navigate to R2 > Manage R2 API Tokens > Create API Token\n"
             "3. Select 'Admin Read & Write' permission with 'Apply to all buckets'"
         )
-        steps.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        steps.setStyleSheet("color: #E1E2E8; font-size: 12px;")
         instr_layout.addWidget(steps)
 
         btn_row = QHBoxLayout()
         open_cf_btn = QPushButton("🌐 Open Cloudflare R2 Tokens Page")
         open_cf_btn.setObjectName("secondaryBtn")
+        open_cf_btn.setStyleSheet("padding: 5px 12px; font-size: 12px;")
         open_cf_btn.clicked.connect(lambda: CloudflareR2Client.open_in_browser("https://dash.cloudflare.com/?to=/:account/r2/api-tokens"))
         btn_row.addWidget(open_cf_btn)
         btn_row.addStretch()
@@ -135,7 +145,7 @@ class R2AuthPage(QWizardPage):
         form_frame = QFrame()
         form_frame.setObjectName("cardWidget")
         form = QFormLayout(form_frame)
-        form.setSpacing(10)
+        form.setSpacing(12)
 
         self.account_id_input = QLineEdit()
         self.account_id_input.setPlaceholderText("e.g. 9b8c7d6e5f4a3b2c1d0e...")
@@ -152,6 +162,7 @@ class R2AuthPage(QWizardPage):
 
         self.test_btn = QPushButton("⚡ Test Connection")
         self.test_btn.setObjectName("secondaryBtn")
+        self.test_btn.setStyleSheet("padding: 6px 12px; font-size: 12px;")
         self.test_btn.clicked.connect(self._run_connection_test)
 
         self.status_label = QLabel("")
@@ -175,11 +186,11 @@ class R2AuthPage(QWizardPage):
         sk = self.secret_key_input.text().strip()
 
         if not acc or not ak or not sk:
-            self.status_label.setText("<font color='#EF4444'>Please fill in all 3 fields first.</font>")
+            self.status_label.setText("<font color='#FFB4AB'>Please fill in all 3 fields first.</font>")
             return
 
         self.test_btn.setEnabled(False)
-        self.status_label.setText("<font color='#38BDF8'>Testing connection to Cloudflare R2...</font>")
+        self.status_label.setText("<font color='#FFB786'>Testing connection to Cloudflare R2...</font>")
 
         self._test_thread = ConnectionTestThread(acc, ak, sk)
         self._test_thread.result_ready.connect(self._on_test_result)
@@ -189,11 +200,11 @@ class R2AuthPage(QWizardPage):
         self.test_btn.setEnabled(True)
         if res.get("success"):
             lat = res.get("latency_ms", 0)
-            self.status_label.setText(f"<font color='#10B981'>✓ Connected successfully ({lat}ms)!</font>")
+            self.status_label.setText(f"<font color='#4AE176'>✓ Connected successfully ({lat}ms)!</font>")
             self.wizard().discovered_buckets = res.get("buckets", [])
         else:
             err = res.get("error") or res.get("message") or "Unknown error"
-            self.status_label.setText(f"<font color='#EF4444'>✗ Connection failed: {err[:80]}</font>")
+            self.status_label.setText(f"<font color='#FFB4AB'>✗ Connection failed: {err[:80]}</font>")
 
 
 class BucketSelectionPage(QWizardPage):
@@ -208,6 +219,7 @@ class BucketSelectionPage(QWizardPage):
         card = QFrame()
         card.setObjectName("cardWidget")
         card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(10)
 
         card_layout.addWidget(QLabel("Select an existing bucket from your Cloudflare account:"))
 
@@ -216,6 +228,7 @@ class BucketSelectionPage(QWizardPage):
         self.bucket_combo.setEditable(False)
         self.new_bucket_btn = QPushButton("➕ New Bucket")
         self.new_bucket_btn.setObjectName("secondaryBtn")
+        self.new_bucket_btn.setStyleSheet("padding: 6px 12px;")
         self.new_bucket_btn.clicked.connect(self._create_new_bucket)
 
         bucket_row.addWidget(self.bucket_combo, stretch=1)
@@ -223,7 +236,7 @@ class BucketSelectionPage(QWizardPage):
         card_layout.addLayout(bucket_row)
 
         create_note = QLabel("Tip: You can select an existing bucket or create a new one using '+ New Bucket'.")
-        create_note.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        create_note.setStyleSheet("color: #A58C7D; font-size: 12px;")
         card_layout.addWidget(create_note)
 
         layout.addWidget(card)
@@ -263,6 +276,7 @@ class FirstJobPage(QWizardPage):
         card = QFrame()
         card.setObjectName("cardWidget")
         card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(10)
 
         card_layout.addWidget(QLabel("Source Folder to Back Up:"))
         folder_row = QHBoxLayout()
@@ -273,25 +287,27 @@ class FirstJobPage(QWizardPage):
 
         browse_btn = QPushButton("📁 Browse...")
         browse_btn.setObjectName("secondaryBtn")
+        browse_btn.setStyleSheet("padding: 6px 12px;")
         browse_btn.clicked.connect(self._browse_folder)
         folder_row.addWidget(browse_btn)
         card_layout.addLayout(folder_row)
 
         presets_row = QHBoxLayout()
         presets_label = QLabel("Quick Presets:")
-        presets_label.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        presets_label.setStyleSheet("color: #A58C7D; font-size: 12px;")
         presets_row.addWidget(presets_label)
 
         for name, folder in [("Documents", "Documents"), ("Pictures", "Pictures"), ("Desktop", "Desktop")]:
             p = str(Path.home() / folder)
             btn = QPushButton(name)
             btn.setObjectName("secondaryBtn")
+            btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
             btn.clicked.connect(lambda checked=False, path=p: self.path_input.setText(path))
             presets_row.addWidget(btn)
         presets_row.addStretch()
         card_layout.addLayout(presets_row)
 
-        card_layout.addSpacing(10)
+        card_layout.addSpacing(6)
         card_layout.addWidget(QLabel("Backup Schedule:"))
         self.schedule_combo = QComboBox()
         self.schedule_combo.addItems([
@@ -314,7 +330,7 @@ class FirstJobPage(QWizardPage):
 
 
 class SetupWizard(QWizard):
-    """Main Guided Setup Wizard."""
+    """Main Guided Setup Wizard matching Stitch Design."""
 
     def __init__(self, db, parent=None):
         super().__init__(parent)
@@ -323,7 +339,7 @@ class SetupWizard(QWizard):
 
         self.setWindowTitle(f"{APP_DISPLAY_NAME} Setup Wizard")
         self.setWizardStyle(QWizard.ModernStyle)
-        self.resize(650, 480)
+        self.resize(680, 500)
 
         icon_path = get_asset_path("icon.png")
         if icon_path.exists():
