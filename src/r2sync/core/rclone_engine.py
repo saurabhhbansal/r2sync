@@ -194,7 +194,8 @@ class RcloneBinaryManager:
     def get_version(cls, exe_path: Optional[Path] = None) -> str:
         try:
             exe = exe_path or cls.get_executable_path()
-            res = subprocess.run([str(exe), "version"], capture_output=True, text=True, timeout=5)
+            flags = 0x08000000 if sys.platform == "win32" else 0
+            res = subprocess.run([str(exe), "version"], capture_output=True, text=True, timeout=5, creationflags=flags)
             lines = res.stdout.strip().splitlines()
             return lines[0] if lines else "Unknown"
         except Exception as e:

@@ -684,12 +684,13 @@ class SyncEngine:
                 try:
                     exe = RcloneBinaryManager.get_executable_path()
                     env = self.rclone_engine._build_env(creds)
-                    import subprocess
+                    flags = 0x08000000 if sys.platform == "win32" else 0
                     subprocess.run(
                         [str(exe), "purge", f"r2:{dataset.bucket_name}/{dataset.remote_prefix}"],
                         env=env,
                         capture_output=True,
                         timeout=30,
+                        creationflags=flags,
                     )
                 except Exception as e:
                     logger.warning(f"Error purging remote dataset files: {e}")

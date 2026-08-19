@@ -53,6 +53,10 @@ class MainWindow(QMainWindow):
         self.ipc = ipc_client
         self.db = db
 
+        self.internal_backup_engine = None
+        self.internal_sync_engine = None
+        self.internal_scheduler = None
+
         self.setWindowTitle(f"{APP_DISPLAY_NAME} - Cloudflare R2 Sync & Backup")
         self.resize(1050, 700)
         self.setMinimumSize(900, 580)
@@ -63,6 +67,7 @@ class MainWindow(QMainWindow):
 
         self._init_ui()
         self._setup_tray()
+        self._setup_engine()
         self._setup_timers()
         self._connect_signals()
 
@@ -71,6 +76,62 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(200, self._launch_setup_wizard)
         else:
             self.refresh_all_data()
+
+    def _setup_engine(self):
+        """Setup internal execution engines and scheduler when running in desktop mode."""
+        if not self.ipc.is_service_running():
+            logger.info("Initializing integrated desktop scheduler and sync watchers...")
+            from r2sync.notifications.notifier import NotificationManager
+            from r2sync.core.backup_engine import BackupEngine
+            from r2sync.core.sync_engine import SyncEngine
+            from r2sync.core.scheduler import JobScheduler
+            from r2sync.core.rclone_engine import RcloneEngine
+
+            rclone_eng = RcloneEngine()
+            notifier = NotificationManager()
+
+            self.internal_backup_engine = BackupEngine(
+                db=self.db,
+                rclone_engine=rclone_eng,
+                notifier=notifier,
+            )
+            self.internal_sync_engine = SyncEngine(
+                db=self.db,
+                rclone_engine=rclone_eng,
+                notifier=notifier,
+            )
+
+            # Connect internal engine callbacks to GUI progress methods
+            self.internal_backup_engine.add_progress_listener(
+                lambda p: self._on_ipc_progress(p.to_dict() if hasattr(p, "to_dict") else p.__dict__)
+            )
+            self.internal_backup_engine.add_completion_listener(
+                lambda r: self._on_ipc_completed(r.to_dict() if hasattr(r, "to_dict") else r.__dict__)
+            )
+            self.internal_sync_engine.add_progress_listener(
+                lambda p: self._on_sync_progress(p.to_dict() if hasattr(p, "to_dict") else p.__dict__)
+            )
+            self.internal_sync_engine.add_completion_listener(
+                lambda ds, res: self._on_sync_completed(res)
+            )
+
+            self.internal_scheduler = JobScheduler(
+                db=self.db,
+                job_runner_cb=lambda j: self.internal_backup_engine.trigger_job_async(j),
+                sync_runner_cb=lambda ds_id: self.internal_sync_engine.trigger_sync_async(ds_id),
+                heartbeat_cb=self._on_heartbeat_tick,
+            )
+            self.internal_scheduler.start()
+
+            # Start realtime file watchers
+            self.internal_sync_engine.start_all_watchers()
+
+    def _on_heartbeat_tick(self):
+        datasets = self.db.list_sync_datasets()
+        dev_id = self.db.get_or_create_device_id()
+        for d in datasets:
+            if d.enabled:
+                self.db.update_device_heartbeat(dev_id, d.dataset_id, "online")
 
     def _init_ui(self):
         central_widget = QWidget()
@@ -466,18 +527,17 @@ class MainWindow(QMainWindow):
     def _on_run_job(self, job_id: int):
         if self.ipc.is_service_running():
             self.ipc.run_job_now(job_id)
-        else:
+        elif self.internal_backup_engine:
             job = self.db.get_job(job_id)
             if job:
-                from r2sync.core.backup_engine import BackupEngine
-
-                be = BackupEngine(self.db)
-                be.trigger_job_async(job)
+                self.internal_backup_engine.trigger_job_async(job)
         self.refresh_all_data()
 
     def _on_cancel_job(self, job_id: int):
         if self.ipc.is_service_running():
             self.ipc.cancel_job(job_id)
+        elif self.internal_backup_engine:
+            self.internal_backup_engine.cancel_job(job_id)
         self.refresh_all_data()
 
     def _on_backup_all(self):
@@ -564,6 +624,8 @@ class MainWindow(QMainWindow):
         def overlap_checker(path: str):
             if self.ipc.is_service_running():
                 return self.ipc.check_folder_overlap(path)
+            if self.internal_sync_engine:
+                return self.internal_sync_engine.check_folder_overlap(path)
             from r2sync.core.sync_engine import SyncEngine
 
             se = SyncEngine(self.db)
@@ -583,11 +645,8 @@ class MainWindow(QMainWindow):
                     exclude_patterns=res["exclude_patterns"],
                     initial_action=res["initial_action"],
                 )
-            else:
-                from r2sync.core.sync_engine import SyncEngine
-
-                se = SyncEngine(self.db)
-                se.create_and_init_dataset(
+            elif self.internal_sync_engine:
+                self.internal_sync_engine.create_and_init_dataset(
                     name=res["name"],
                     local_path=res["local_path"],
                     bucket_name=res["bucket_name"],
@@ -605,6 +664,8 @@ class MainWindow(QMainWindow):
         try:
             if self.ipc.is_service_running():
                 discovered = self.ipc.discover_remote_datasets()
+            elif self.internal_sync_engine:
+                discovered = [d.to_dict() for d in self.internal_sync_engine.discover_remote_datasets()]
             else:
                 from r2sync.core.sync_engine import SyncEngine
 
@@ -634,11 +695,12 @@ class MainWindow(QMainWindow):
                 )
             else:
                 from r2sync.core.models import RemoteDatasetInfo
-                from r2sync.core.sync_engine import SyncEngine
-
-                se = SyncEngine(self.db)
+                engine = self.internal_sync_engine
+                if not engine:
+                    from r2sync.core.sync_engine import SyncEngine
+                    engine = SyncEngine(self.db)
                 info = RemoteDatasetInfo.from_dict(sel)
-                se.join_remote_dataset(remote_info=info, local_path=loc)
+                engine.join_remote_dataset(remote_info=info, local_path=loc)
 
             self.refresh_all_data()
             self.btn_nav_sync.click()
@@ -653,6 +715,8 @@ class MainWindow(QMainWindow):
         def remove_dev_cb(ds_id: str, dev_id: str) -> bool:
             if self.ipc.is_service_running():
                 return self.ipc.remove_sync_device(ds_id, dev_id)
+            if self.internal_sync_engine:
+                return self.internal_sync_engine.remove_device(ds_id, dev_id)
             from r2sync.core.sync_engine import SyncEngine
 
             se = SyncEngine(self.db)
@@ -661,6 +725,8 @@ class MainWindow(QMainWindow):
         def refresh_devs_cb(ds_id: str):
             if self.ipc.is_service_running():
                 return self.ipc.refresh_sync_devices(ds_id)
+            if self.internal_sync_engine:
+                return [d.to_dict() for d in self.internal_sync_engine.refresh_connected_devices(ds_id)]
             from r2sync.core.sync_engine import SyncEngine
 
             se = SyncEngine(self.db)
@@ -683,6 +749,8 @@ class MainWindow(QMainWindow):
         def resolver_cb(c_id: int, res: str) -> bool:
             if self.ipc.is_service_running():
                 return self.ipc.resolve_conflict(c_id, res)
+            if self.internal_sync_engine:
+                return self.internal_sync_engine.resolve_conflict(c_id, res)
             from r2sync.core.sync_engine import SyncEngine
 
             se = SyncEngine(self.db)
@@ -701,11 +769,8 @@ class MainWindow(QMainWindow):
     def _on_sync_dataset_now(self, dataset_id: str):
         if self.ipc.is_service_running():
             self.ipc.sync_dataset_now(dataset_id)
-        else:
-            from r2sync.core.sync_engine import SyncEngine
-
-            se = SyncEngine(self.db)
-            se.trigger_sync_async(dataset_id)
+        elif self.internal_sync_engine:
+            self.internal_sync_engine.trigger_sync_async(dataset_id)
         self.refresh_all_data()
 
     def _on_pause_toggle_sync(self, dataset_id: str, pause: bool):
@@ -720,6 +785,11 @@ class MainWindow(QMainWindow):
                 ds.paused = pause
                 ds.status = "paused" if pause else "waiting"
                 self.db.update_sync_dataset(ds)
+                if self.internal_sync_engine:
+                    if pause:
+                        self.internal_sync_engine.watcher_manager.stop_watching(dataset_id)
+                    elif ds.enabled and ds.schedule_mode == "realtime" and os.path.exists(ds.local_path):
+                        self.internal_sync_engine.watcher_manager.start_watching(dataset_id, ds.local_path, ds.exclude_patterns)
         self.refresh_all_data()
 
     def _on_delete_sync_dataset(self, dataset_id: str):
@@ -737,11 +807,8 @@ class MainWindow(QMainWindow):
         if ans == QMessageBox.Yes:
             if self.ipc.is_service_running():
                 self.ipc.delete_sync_dataset(dataset_id, delete_remote_files=False)
-            else:
-                from r2sync.core.sync_engine import SyncEngine
-
-                se = SyncEngine(self.db)
-                se.delete_dataset(dataset_id, delete_remote_files=False)
+            elif self.internal_sync_engine:
+                self.internal_sync_engine.delete_dataset(dataset_id, delete_remote_files=False)
             self.refresh_all_data()
 
     def _on_device_name_saved(self, name: str):
@@ -752,13 +819,17 @@ class MainWindow(QMainWindow):
         self.refresh_all_data()
 
     def _show_and_raise(self):
-        self.show()
+        self.showNormal()
         self.raise_()
         self.activateWindow()
 
     def _on_force_quit(self):
         self.tray.hide()
         self.ipc.stop_event_stream()
+        if self.internal_scheduler:
+            self.internal_scheduler.stop()
+        if self.internal_sync_engine:
+            self.internal_sync_engine.stop_all_watchers()
         from PySide6.QtWidgets import QApplication
 
         QApplication.quit()
