@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from r2sync.config import (
+    RCLONE_BUFFER_SIZE,
     RCLONE_CHUNK_SIZE,
     RCLONE_CONCURRENCY,
     RCLONE_DEFAULT_CHECKERS,
@@ -279,10 +280,13 @@ class RcloneEngine:
             "--use-json-log",
             "--stats", "1s",
             "--stats-log-level", "NOTICE",
+            "--fast-list",
+            "--buffer-size", RCLONE_BUFFER_SIZE,
             "--s3-chunk-size", RCLONE_CHUNK_SIZE,
             "--s3-upload-concurrency", str(RCLONE_CONCURRENCY),
             "--transfers", str(RCLONE_DEFAULT_TRANSFERS),
             "--checkers", str(RCLONE_DEFAULT_CHECKERS),
+            "--s3-no-check-bucket",
             "--retries", "3",
             "--low-level-retries", "10",
         ]
@@ -615,10 +619,13 @@ class RcloneEngine:
             "--use-json-log",
             "--stats", "1s",
             "--stats-log-level", "NOTICE",
+            "--fast-list",
+            "--buffer-size", RCLONE_BUFFER_SIZE,
             "--s3-chunk-size", RCLONE_CHUNK_SIZE,
             "--s3-upload-concurrency", str(RCLONE_CONCURRENCY),
             "--transfers", str(RCLONE_DEFAULT_TRANSFERS),
             "--checkers", str(RCLONE_DEFAULT_CHECKERS),
+            "--s3-no-check-bucket",
             "--retries", "3",
             "--low-level-retries", "10",
             "--backup-dir1", recovery_dir,
