@@ -42,6 +42,7 @@ class SettingsView(QWidget):
     device_name_saved = Signal(str)
     speed_profile_saved = Signal(str)
     restart_service_requested = Signal()
+    start_service_requested = Signal()
     download_rclone_requested = Signal()
     test_connection_requested = Signal(str, str, str)
 
@@ -252,8 +253,17 @@ class SettingsView(QWidget):
         svc_layout = QFormLayout(svc_group)
         svc_layout.setSpacing(12)
 
-        self.svc_status_label = QLabel("<font color='#4AE176'>● Background Service Active</font>")
-        svc_layout.addRow("Service Status:", self.svc_status_label)
+        svc_row = QHBoxLayout()
+        self.svc_status_label = QLabel("<font color='#4AE176'>● Integrated Desktop Engine Active</font>")
+        self.start_service_btn = QPushButton("Start 24/7 Background Daemon")
+        self.start_service_btn.setObjectName("secondaryBtn")
+        self.start_service_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
+        self.start_service_btn.clicked.connect(self.start_service_requested.emit)
+        self.start_service_btn.setVisible(False)
+        svc_row.addWidget(self.svc_status_label)
+        svc_row.addWidget(self.start_service_btn)
+        svc_row.addStretch()
+        svc_layout.addRow("Engine Status:", svc_row)
 
         self.rclone_status_label = QLabel("Detecting...")
         rclone_row = QHBoxLayout()
@@ -508,7 +518,9 @@ class SettingsView(QWidget):
 
     def set_service_status(self, active: bool):
         if active:
-            self.svc_status_label.setText("<font color='#4AE176'>● Background Service Active</font>")
+            self.svc_status_label.setText("<font color='#4AE176'>● Dedicated Background Service Active (24/7)</font>")
+            self.start_service_btn.setVisible(False)
         else:
-            self.svc_status_label.setText("<font color='#FFB4AB'>● Background Service Offline</font>")
+            self.svc_status_label.setText("<font color='#4AE176'>● Integrated Desktop Engine Active</font> <font color='#A58C7D'>(Syncing & schedules running)</font>")
+            self.start_service_btn.setVisible(True)
 

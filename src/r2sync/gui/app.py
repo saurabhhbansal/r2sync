@@ -319,8 +319,37 @@ class MainWindow(QMainWindow):
         self.view_settings.credentials_saved.connect(self._on_credentials_saved)
         self.view_settings.device_name_saved.connect(self._on_device_name_saved)
         self.view_settings.speed_profile_saved.connect(self._on_speed_profile_saved)
+        self.view_settings.start_service_requested.connect(self._on_start_background_service)
         self.view_settings.download_rclone_requested.connect(self._on_download_rclone)
         self.view_settings.test_connection_requested.connect(self._on_test_connection)
+
+    def _on_start_background_service(self):
+        try:
+            import subprocess
+            from pathlib import Path
+
+            exe_dir = Path(sys.executable).parent
+            service_exe = exe_dir / ("r2sync-service.exe" if sys.platform == "win32" else "r2sync-service")
+
+            if service_exe.exists():
+                cmd = [str(service_exe), "--standalone"]
+            else:
+                cmd = [sys.executable, "-m", "r2sync.service.main", "--standalone"]
+
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+
+            subprocess.Popen(
+                cmd,
+                creationflags=creation_flags,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
+            QTimer.singleShot(1500, self.refresh_all_data)
+        except Exception as e:
+            logger.error(f"Failed to start background service: {e}")
 
     # -------------------------------------------------------------
     # Event Handlers & Data Loading
@@ -374,13 +403,14 @@ class MainWindow(QMainWindow):
 
             # Background service & rclone engine check
             is_svc_running = self.ipc.is_service_running()
+            if conflicts_count > 0:
+                self.svc_badge.setText(f"● {conflicts_count} Conflict(s)")
+                self.svc_badge.setStyleSheet("color: #F6821F; font-size: 12px; font-weight: 600;")
+            else:
+                self.svc_badge.setText("● All systems operational")
+                self.svc_badge.setStyleSheet("color: #4AE176; font-size: 12px; font-weight: 500;")
+
             if is_svc_running:
-                if conflicts_count > 0:
-                    self.svc_badge.setText(f"● {conflicts_count} Conflict(s)")
-                    self.svc_badge.setStyleSheet("color: #F6821F; font-size: 12px; font-weight: 600;")
-                else:
-                    self.svc_badge.setText("● All systems operational")
-                    self.svc_badge.setStyleSheet("color: #4AE176; font-size: 12px; font-weight: 500;")
                 self.view_settings.set_service_status(True)
                 try:
                     r_status = self.ipc.get_rclone_status()
@@ -391,8 +421,6 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
             else:
-                self.svc_badge.setText("● Standalone Mode")
-                self.svc_badge.setStyleSheet("color: #FFB786; font-size: 12px;")
                 self.view_settings.set_service_status(False)
                 try:
                     from r2sync.core.rclone_engine import RcloneBinaryManager
