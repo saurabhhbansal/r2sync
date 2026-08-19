@@ -3,18 +3,26 @@
 import os
 import sys
 import pytest
-from PySide6.QtWidgets import QApplication
 
-from r2sync.client.ipc_client import IPCClient
-from r2sync.core.db import Database
-from r2sync.core.models import BackupJob, SyncDataset
-from r2sync.gui.app import MainWindow
-from r2sync.gui.styles.theme import apply_theme
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+try:
+    from PySide6.QtWidgets import QApplication
+    from r2sync.client.ipc_client import IPCClient
+    from r2sync.core.db import Database
+    from r2sync.core.models import BackupJob, SyncDataset
+    from r2sync.gui.app import MainWindow
+    from r2sync.gui.styles.theme import apply_theme
+    PYSIDE6_AVAILABLE = True
+except (ImportError, OSError) as e:
+    PYSIDE6_AVAILABLE = False
+    PYSIDE6_IMPORT_ERROR = str(e)
 
 
 @pytest.fixture(scope="session")
 def qapp():
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    if not PYSIDE6_AVAILABLE:
+        pytest.skip(f"PySide6 runtime libraries unavailable in environment: {PYSIDE6_IMPORT_ERROR}")
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
@@ -22,6 +30,9 @@ def qapp():
 
 
 def test_main_window_and_views(qapp, tmp_path):
+    if not PYSIDE6_AVAILABLE:
+        pytest.skip(f"PySide6 runtime libraries unavailable: {PYSIDE6_IMPORT_ERROR}")
+
     db_path = tmp_path / "gui_test.sqlite"
     db = Database(db_path)
 
