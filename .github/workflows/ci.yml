@@ -76,12 +76,26 @@ jobs:
           mv "${pkg}/${bin}" "${HOME}/.local/bin/${bin}"
           chmod +x "${HOME}/.local/bin/${bin}"
           rm -rf rclone.zip "${pkg}"
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          # Later steps read GITHUB_PATH, but they do not all run in this
+          # shell: on Windows this step is Git Bash, where ${HOME} is an MSYS
+          # path (/c/Users/...), while the test step is PowerShell, which
+          # cannot resolve one. Write the native form or pytest sees no rclone
+          # and the suite errors out on a binary that is sitting right there.
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            cygpath -w "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          else
+            echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          fi
 
       - name: Verify rclone is on PATH for the end-to-end tests
         # Fails the job rather than letting test_sync_e2e.py skip itself again.
-        shell: bash
-        run: rclone version
+        # No `shell:` on purpose -- this has to run in the job's default shell,
+        # the one pytest starts in, and resolve the binary the same way
+        # test_sync_e2e.py does. A bash-only check went green on Windows while
+        # the PowerShell test step could not find rclone at all.
+        run: |
+          rclone version
+          python -c "import shutil, sys; p = shutil.which('rclone'); print('shutil.which:', p); sys.exit(0 if p else 1)"
 
       - name: Run test suite
         env:

@@ -17,8 +17,12 @@ from __future__ import annotations
 
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # tomllib is 3.11+; requires-python allows 3.10
+    tomllib = None
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,13 +35,33 @@ def _read(label: str, path: Path, pattern: str) -> tuple[str, str, str]:
     return label, str(path.relative_to(ROOT)), match.group(1)
 
 
+def _pyproject_version() -> str:
+    """``project.version`` from pyproject.toml, with or without tomllib.
+
+    This script runs before anything is installed and must work on every
+    interpreter the project supports, so 3.10 -- which has no tomllib -- falls
+    back to reading the key out of the ``[project]`` table itself rather than
+    taking a dependency on tomli.
+    """
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    if tomllib is not None:
+        return tomllib.loads(text)["project"]["version"]
+
+    table = re.search(r"^\[project\]\s*$(.*?)(?=^\[|\Z)", text, re.M | re.S)
+    if not table:
+        raise SystemExit("could not find a [project] table in pyproject.toml")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', table.group(1), re.M)
+    if not match:
+        raise SystemExit("could not find project.version in pyproject.toml")
+    return match.group(1)
+
+
 def collect() -> list[tuple[str, str, str]]:
     """Every version string in the repo, as (label, file, value)."""
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     return [
         _read("__version__", ROOT / "src/r2sync/__init__.py",
               r'__version__\s*=\s*"([^"]+)"'),
-        ("project.version", "pyproject.toml", pyproject["project"]["version"]),
+        ("project.version", "pyproject.toml", _pyproject_version()),
         _read("MyAppVersion", ROOT / "packaging/installer.iss",
               r'#define\s+MyAppVersion\s+"([^"]+)"'),
     ]
