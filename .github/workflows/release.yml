@@ -34,9 +34,57 @@ jobs:
           pip install -e .[dev]
           pip install pyinstaller
 
-      - name: Run test suite
+      - name: Install rclone
+        # tests/test_sync_e2e.py drives a real rclone binary and skips itself
+        # when there is none, so without this step the entire end-to-end suite
+        # passed by never running at all -- on main and on release tags alike.
+        # The version is read from r2sync's own config so CI always exercises
+        # the same binary the application downloads for users.
+        shell: bash
         run: |
-          pytest -v
+          set -euo pipefail
+          version="$(python -c 'from r2sync.config import RCLONE_VERSION; print(RCLONE_VERSION)')"
+          case "${RUNNER_OS}" in
+            Linux)   pkg="rclone-${version}-linux-amd64";   bin="rclone"     ;;
+            Windows) pkg="rclone-${version}-windows-amd64"; bin="rclone.exe" ;;
+            macOS)   pkg="rclone-${version}-osx-amd64";     bin="rclone"     ;;
+            *) echo "unsupported runner: ${RUNNER_OS}" >&2; exit 1 ;;
+          esac
+          curl -fsSL -o rclone.zip "https://downloads.rclone.org/${version}/${pkg}.zip"
+          unzip -q rclone.zip
+          mkdir -p "${HOME}/.local/bin"
+          mv "${pkg}/${bin}" "${HOME}/.local/bin/${bin}"
+          chmod +x "${HOME}/.local/bin/${bin}"
+          rm -rf rclone.zip "${pkg}"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify rclone is on PATH for the end-to-end tests
+        # Fails the job rather than letting test_sync_e2e.py skip itself again.
+        shell: bash
+        run: rclone version
+
+      - name: Check the version strings match the tag
+        # A release built from mismatched version strings ships an installer
+        # whose in-app version disagrees with its own tag, which makes the
+        # updater offer users the build they are already running.
+        # workflow_dispatch runs from a branch, where there is no tag to
+        # compare against -- the files must still agree with each other.
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            python packaging/check_version.py "${GITHUB_REF_NAME}"
+          else
+            python packaging/check_version.py
+          fi
+
+      - name: Run test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+          # A release must never be cut from a run that quietly skipped its
+          # tests. See tests/conftest.py.
+          R2SYNC_REQUIRE_FULL_SUITE: '1'
+        run: |
+          pytest -v -rs
 
       - name: Install Inno Setup
         run: |

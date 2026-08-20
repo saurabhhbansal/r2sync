@@ -35,17 +35,60 @@ jobs:
       - name: Install system Qt libraries on Linux
         if: runner.os == 'Linux'
         timeout-minutes: 5
+        # NOT suffixed with "|| true". These are what PySide6 needs to import;
+        # when the install was allowed to fail quietly every GUI test skipped
+        # itself and the job still went green.
         run: |
-          sudo timeout 120 apt-get update || true
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0 || true
+          sudo timeout 120 apt-get update
+          sudo apt-get install -y \
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
+      - name: Check the version strings agree
+        # Cheap, and catches the drift on the PR that introduces it rather than
+        # at release time when a tag has already been pushed.
+        shell: bash
+        run: python packaging/check_version.py
+
+      - name: Install rclone
+        # tests/test_sync_e2e.py drives a real rclone binary and skips itself
+        # when there is none, so without this step the entire end-to-end suite
+        # passed by never running at all -- on main and on release tags alike.
+        # The version is read from r2sync's own config so CI always exercises
+        # the same binary the application downloads for users.
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python -c 'from r2sync.config import RCLONE_VERSION; print(RCLONE_VERSION)')"
+          case "${RUNNER_OS}" in
+            Linux)   pkg="rclone-${version}-linux-amd64";   bin="rclone"     ;;
+            Windows) pkg="rclone-${version}-windows-amd64"; bin="rclone.exe" ;;
+            macOS)   pkg="rclone-${version}-osx-amd64";     bin="rclone"     ;;
+            *) echo "unsupported runner: ${RUNNER_OS}" >&2; exit 1 ;;
+          esac
+          curl -fsSL -o rclone.zip "https://downloads.rclone.org/${version}/${pkg}.zip"
+          unzip -q rclone.zip
+          mkdir -p "${HOME}/.local/bin"
+          mv "${pkg}/${bin}" "${HOME}/.local/bin/${bin}"
+          chmod +x "${HOME}/.local/bin/${bin}"
+          rm -rf rclone.zip "${pkg}"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify rclone is on PATH for the end-to-end tests
+        # Fails the job rather than letting test_sync_e2e.py skip itself again.
+        shell: bash
+        run: rclone version
+
       - name: Run test suite
         env:
           QT_QPA_PLATFORM: offscreen
+          # Turns "optional dependency missing" from a silent skip into a hard
+          # failure. Only genuine platform skips (Windows-only tests on Linux)
+          # remain. See tests/conftest.py.
+          R2SYNC_REQUIRE_FULL_SUITE: '1'
         run: |
-          pytest -v
+          pytest -v -rs

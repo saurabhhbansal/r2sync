@@ -4,6 +4,8 @@ import os
 import sys
 import pytest
 
+from conftest import require_or_skip
+
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 try:
@@ -22,7 +24,7 @@ except (ImportError, OSError) as e:
 @pytest.fixture(scope="session")
 def qapp():
     if not PYSIDE6_AVAILABLE:
-        pytest.skip(f"PySide6 runtime libraries unavailable in environment: {PYSIDE6_IMPORT_ERROR}")
+        require_or_skip(False, f"PySide6 runtime ({PYSIDE6_IMPORT_ERROR})", "Install a PySide6 runtime (on Linux: libegl1, libgl1, libxkbcommon-x11-0, libdbus-1-3, libxcb-cursor0).")
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
@@ -31,7 +33,7 @@ def qapp():
 
 def test_main_window_and_views(qapp, tmp_path):
     if not PYSIDE6_AVAILABLE:
-        pytest.skip(f"PySide6 runtime libraries unavailable: {PYSIDE6_IMPORT_ERROR}")
+        require_or_skip(False, f"PySide6 runtime ({PYSIDE6_IMPORT_ERROR})", "Install a PySide6 runtime (on Linux: libegl1, libgl1, libxkbcommon-x11-0, libdbus-1-3, libxcb-cursor0).")
 
     db_path = tmp_path / "gui_test.sqlite"
     db = Database(db_path)
@@ -64,7 +66,7 @@ def test_main_window_and_views(qapp, tmp_path):
 
 def test_folder_tree_filter_widget(qapp, tmp_path):
     if not PYSIDE6_AVAILABLE:
-        pytest.skip(f"PySide6 runtime libraries unavailable: {PYSIDE6_IMPORT_ERROR}")
+        require_or_skip(False, f"PySide6 runtime ({PYSIDE6_IMPORT_ERROR})", "Install a PySide6 runtime (on Linux: libegl1, libgl1, libxkbcommon-x11-0, libdbus-1-3, libxcb-cursor0).")
 
     from PySide6.QtCore import Qt
     from r2sync.gui.views.folder_tree_widget import FolderTreeFilterWidget

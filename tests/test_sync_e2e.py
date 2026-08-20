@@ -12,11 +12,14 @@ Skipped automatically when no rclone binary is available (set
 import hashlib
 import os
 import shutil
+import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
+
+from conftest import skip_module_unless
 
 from r2sync.core.db import Database
 from r2sync.core.models import R2Credentials, SyncDataset, SyncScheduleMode, SyncStatus
@@ -24,8 +27,8 @@ from r2sync.core.sync_engine import SyncEngine
 
 RCLONE_BIN = os.environ.get("R2SYNC_TEST_RCLONE") or shutil.which("rclone")
 
-pytestmark = pytest.mark.skipif(
-    not RCLONE_BIN, reason="no rclone binary available for end-to-end tests"
+pytestmark = skip_module_unless(
+    bool(RCLONE_BIN), "an rclone binary", "Put rclone on PATH or set R2SYNC_TEST_RCLONE to a binary."
 )
 
 SYNC_TIMEOUT = 60
@@ -87,15 +90,26 @@ class Harness:
             time.sleep(0.2)
         raise AssertionError(f"{side} file was never removed: {path}")
 
+    @staticmethod
+    def _rel(path: Path, root: Path) -> str:
+        """Relative path with forward slashes on every platform.
+
+        ``str(Path.relative_to(...))`` yields backslashes on Windows, so the
+        expectations in these tests (written with "/") only ever matched on
+        POSIX. The separator is an artifact of the test helper, not of anything
+        r2sync produces.
+        """
+        return path.relative_to(root).as_posix()
+
     def remote_tree(self):
         return sorted(
-            str(p.relative_to(self.remote_data))
+            self._rel(p, self.remote_data)
             for p in self.remote_data.rglob("*") if p.is_file()
         )
 
     def local_tree(self):
         return sorted(
-            str(p.relative_to(self.local))
+            self._rel(p, self.local)
             for p in self.local.rglob("*")
             if p.is_file() and ".r2sync_trash" not in p.parts
         )
@@ -105,8 +119,12 @@ class Harness:
 def harness(tmp_path, monkeypatch):
     data_dir = tmp_path / "appdata"
     (data_dir / "rclone").mkdir(parents=True)
-    shutil.copy(RCLONE_BIN, data_dir / "rclone" / "rclone")
-    os.chmod(data_dir / "rclone" / "rclone", 0o755)
+    # Must match get_rclone_executable_path(), which appends ".exe" on Windows.
+    # Without the extension the copy was simply ignored there and the tests
+    # silently fell back to whatever rclone happened to be on PATH.
+    rclone_name = "rclone.exe" if sys.platform == "win32" else "rclone"
+    shutil.copy(RCLONE_BIN, data_dir / "rclone" / rclone_name)
+    os.chmod(data_dir / "rclone" / rclone_name, 0o755)
     monkeypatch.setenv("R2SYNC_DATA_DIR", str(data_dir))
 
     fake_r2 = tmp_path / "fakeR2"
@@ -162,9 +180,9 @@ def harness(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_initial_sync_uploads_existing_files(harness):
-    (harness.local / "seed.txt").write_text("hello")
+    (harness.local / "seed.txt").write_text("hello", encoding="utf-8")
     (harness.local / "sub folder").mkdir()
-    (harness.local / "sub folder" / "résumé.txt").write_text("bonjour")
+    (harness.local / "sub folder" / "résumé.txt").write_text("bonjour", encoding="utf-8")
 
     harness.sync(resync_mode="path1", force_resync=True)
 
@@ -173,36 +191,36 @@ def test_initial_sync_uploads_existing_files(harness):
 
 def test_creating_a_file_triggers_a_sync_through_the_watcher(harness):
     """The headline bug: a newly created file must actually reach R2."""
-    (harness.local / "seed.txt").write_text("hello")
+    (harness.local / "seed.txt").write_text("hello", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
 
     assert harness.engine.watcher_manager.is_watching("ds-e2e"), \
         "the watcher must be live after the first sync"
 
-    (harness.local / "brand new file.txt").write_text("created by the user")
+    (harness.local / "brand new file.txt").write_text("created by the user", encoding="utf-8")
 
     harness.wait_for_remote("brand new file.txt")
-    assert (harness.remote_data / "brand new file.txt").read_text() == "created by the user"
+    assert (harness.remote_data / "brand new file.txt").read_text(encoding="utf-8") == "created by the user"
 
 
 def test_modify_delete_and_rename_all_propagate(harness):
     # Several files, so removing one is an ordinary deletion rather than
     # "the whole folder is now empty".
     for i in range(4):
-        (harness.local / f"keep_{i}.txt").write_text(f"keep {i}")
+        (harness.local / f"keep_{i}.txt").write_text(f"keep {i}", encoding="utf-8")
     target = harness.local / "notes.txt"
-    target.write_text("v1")
+    target.write_text("v1", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
     assert "notes.txt" in harness.remote_tree()
 
     # modify
-    target.write_text("v2 with more content")
+    target.write_text("v2 with more content", encoding="utf-8")
     deadline = time.time() + SYNC_TIMEOUT
     while time.time() < deadline:
-        if (harness.remote_data / "notes.txt").read_text() == "v2 with more content":
+        if (harness.remote_data / "notes.txt").read_text(encoding="utf-8") == "v2 with more content":
             break
         time.sleep(0.2)
-    assert (harness.remote_data / "notes.txt").read_text() == "v2 with more content"
+    assert (harness.remote_data / "notes.txt").read_text(encoding="utf-8") == "v2 with more content"
 
     # rename
     target.rename(harness.local / "renamed notes.txt")
@@ -222,7 +240,7 @@ def test_renaming_the_only_file_still_propagates(harness):
     handed to bisync; passing the raw count meant "abort above 50%" and a rename
     in a small folder never reached R2.
     """
-    (harness.local / "solo.txt").write_text("only file")
+    (harness.local / "solo.txt").write_text("only file", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
 
     (harness.local / "solo.txt").rename(harness.local / "solo renamed.txt")
@@ -238,7 +256,7 @@ def test_emptying_the_whole_folder_is_held_for_confirmation(harness):
     resurrect the deletions or propagate a bogus wipe to the other computers.
     """
     for i in range(3):
-        (harness.local / f"f{i}.txt").write_text(f"content {i}")
+        (harness.local / f"f{i}.txt").write_text(f"content {i}", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
     assert len(harness.remote_tree()) == 3
 
@@ -254,11 +272,11 @@ def test_emptying_the_whole_folder_is_held_for_confirmation(harness):
 
 
 def test_rapid_successive_changes_all_end_up_synced(harness):
-    (harness.local / "seed.txt").write_text("seed")
+    (harness.local / "seed.txt").write_text("seed", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
 
     for i in range(12):
-        (harness.local / f"burst_{i:02d}.txt").write_text(f"content {i}")
+        (harness.local / f"burst_{i:02d}.txt").write_text(f"content {i}", encoding="utf-8")
         time.sleep(0.05)
 
     deadline = time.time() + SYNC_TIMEOUT
@@ -291,7 +309,7 @@ def test_a_change_made_during_a_sync_is_not_lost(harness):
     harness.engine.trigger_sync_async("ds-e2e")
     assert started.wait(timeout=10)
 
-    (harness.local / "written during sync.txt").write_text("must not be lost")
+    (harness.local / "written during sync.txt").write_text("must not be lost", encoding="utf-8")
     time.sleep(0.5)
     harness.engine.rclone_engine.run_bisync = original
 
@@ -308,18 +326,18 @@ def test_unicode_and_spaced_paths_round_trip(harness):
     for name in names:
         path = harness.local / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"content of {name}")
+        path.write_text(f"content of {name}", encoding="utf-8")
 
     harness.sync(resync_mode="path1", force_resync=True)
 
     assert sorted(harness.remote_tree()) == sorted(names)
     for name in names:
-        assert (harness.remote_data / name).read_text() == f"content of {name}"
+        assert (harness.remote_data / name).read_text(encoding="utf-8") == f"content of {name}"
 
 
 def test_second_sync_is_incremental_not_a_resync(harness):
     """initial_sync_done must be persisted so bisync stops re-baselining."""
-    (harness.local / "a.txt").write_text("a")
+    (harness.local / "a.txt").write_text("a", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
 
     stored = harness.db.get_sync_dataset("ds-e2e")
@@ -334,7 +352,7 @@ def test_second_sync_is_incremental_not_a_resync(harness):
         return original(dataset, **kw)
 
     harness.engine.rclone_engine.run_bisync = capture
-    (harness.local / "b.txt").write_text("b")
+    (harness.local / "b.txt").write_text("b", encoding="utf-8")
     harness.sync()
 
     assert seen["initial_sync_done"] is True
@@ -346,17 +364,17 @@ def test_second_sync_is_incremental_not_a_resync(harness):
 # ---------------------------------------------------------------------------
 
 def test_remote_changes_download_to_the_local_folder(harness):
-    (harness.local / "local.txt").write_text("from this pc")
+    (harness.local / "local.txt").write_text("from this pc", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
 
     # Another computer adds files to the shared dataset.
-    (harness.remote_data / "from other pc.txt").write_text("hello from the laptop")
+    (harness.remote_data / "from other pc.txt").write_text("hello from the laptop", encoding="utf-8")
     (harness.remote_data / "shared dir").mkdir()
-    (harness.remote_data / "shared dir" / "spreadsheet.csv").write_text("a,b,c\n1,2,3\n")
+    (harness.remote_data / "shared dir" / "spreadsheet.csv").write_text("a,b,c\n1,2,3\n", encoding="utf-8")
 
     harness.sync()
 
-    assert (harness.local / "from other pc.txt").read_text() == "hello from the laptop"
+    assert (harness.local / "from other pc.txt").read_text(encoding="utf-8") == "hello from the laptop"
     assert (harness.local / "shared dir" / "spreadsheet.csv").exists()
 
 
@@ -439,11 +457,11 @@ def test_interrupted_download_resumes_without_corrupting_files(harness):
 
 
 def test_bidirectional_changes_in_one_pass(harness):
-    (harness.local / "from_local.txt").write_text("local side")
+    (harness.local / "from_local.txt").write_text("local side", encoding="utf-8")
     harness.sync(resync_mode="path1", force_resync=True)
 
-    (harness.local / "another_local.txt").write_text("local 2")
-    (harness.remote_data / "from_remote.txt").write_text("remote side")
+    (harness.local / "another_local.txt").write_text("local 2", encoding="utf-8")
+    (harness.remote_data / "from_remote.txt").write_text("remote side", encoding="utf-8")
 
     harness.sync()
 
@@ -504,7 +522,7 @@ def test_profile_flags_are_all_accepted_by_rclone(tmp_path):
 
     src = tmp_path / "src"
     src.mkdir()
-    (src / "f.txt").write_text("hi")
+    (src / "f.txt").write_text("hi", encoding="utf-8")
 
     for prof in list_speed_profiles():
         dst = tmp_path / f"dst_{prof.id}"
@@ -513,4 +531,4 @@ def test_profile_flags_are_all_accepted_by_rclone(tmp_path):
             *build_transfer_flags(prof, include_s3=True),
         ])
         assert res.returncode == 0, f"profile {prof.id} produced an invalid command: {res.stderr[-500:]}"
-        assert (dst / "f.txt").read_text() == "hi"
+        assert (dst / "f.txt").read_text(encoding="utf-8") == "hi"

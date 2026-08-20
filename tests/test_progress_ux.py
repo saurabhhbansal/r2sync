@@ -4,6 +4,8 @@ import os
 
 import pytest
 
+from conftest import skip_module_unless
+
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from r2sync.core.models import SyncProgressEvent
@@ -22,8 +24,8 @@ except (ImportError, OSError) as e:
     PYSIDE6_AVAILABLE = False
     PYSIDE6_IMPORT_ERROR = str(e)
 
-pytestmark = pytest.mark.skipif(
-    not PYSIDE6_AVAILABLE, reason="PySide6 runtime unavailable"
+pytestmark = skip_module_unless(
+    PYSIDE6_AVAILABLE, "PySide6 runtime", "Install a PySide6 runtime (on Linux: libegl1, libgl1, libxkbcommon-x11-0, libdbus-1-3, libxcb-cursor0)."
 )
 
 
