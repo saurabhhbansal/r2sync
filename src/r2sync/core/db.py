@@ -223,6 +223,31 @@ class Database:
                 );
             """)
 
+            # Where a folder's data lives once its sync is removed.
+            #
+            # A dataset's remote location is derived from its id, so adding a
+            # folder back after removing its sync used to point at a fresh,
+            # empty prefix: the folder uploaded all over again and the previous
+            # copy was left in the bucket, still stored and still billed. The
+            # id is remembered here on the way out so re-adding the same folder
+            # can go back to the same objects.
+            #
+            # Deliberately a local lookup. Reading it out of R2 instead meant a
+            # credential-store hit and one rclone call per dataset in the
+            # middle of an interactive "add folder", which is slow at best and
+            # timed out the IPC call at worst.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS detached_datasets (
+                    local_path_key TEXT NOT NULL,
+                    bucket_name TEXT NOT NULL,
+                    dataset_id TEXT NOT NULL,
+                    remote_prefix TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    detached_at TEXT NOT NULL,
+                    PRIMARY KEY (local_path_key, bucket_name)
+                );
+            """)
+
             # Sync Conflicts table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS sync_conflicts (
@@ -835,6 +860,55 @@ class Database:
     # ---------------------------------------------------------
     # Sync Devices CRUD
     # ---------------------------------------------------------
+
+    # ---------------------------------------------------------
+    # Datasets whose sync was removed but whose data is still in R2
+    # ---------------------------------------------------------
+
+    def remember_detached_dataset(self, dataset: SyncDataset, local_path_key: str) -> bool:
+        """Record where a removed dataset's data still lives.
+
+        ``local_path_key`` must already be canonicalised by the caller -- this
+        layer has no business knowing how rclone spells a Windows path.
+        """
+        with self.transaction() as cur:
+            cur.execute("""
+                INSERT INTO detached_datasets (
+                    local_path_key, bucket_name, dataset_id, remote_prefix, name, detached_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(local_path_key, bucket_name) DO UPDATE SET
+                    dataset_id = excluded.dataset_id,
+                    remote_prefix = excluded.remote_prefix,
+                    name = excluded.name,
+                    detached_at = excluded.detached_at
+            """, (
+                local_path_key,
+                dataset.bucket_name,
+                dataset.dataset_id,
+                dataset.remote_prefix,
+                dataset.name,
+                datetime.now().isoformat(),
+            ))
+            return True
+
+    def find_detached_dataset(self, local_path_key: str, bucket_name: str) -> Optional[Dict[str, Any]]:
+        """The dataset this folder was last synced to, if its data is still there."""
+        with self.transaction() as cur:
+            cur.execute(
+                "SELECT * FROM detached_datasets WHERE local_path_key = ? AND bucket_name = ?",
+                (local_path_key, bucket_name),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def forget_detached_dataset(self, local_path_key: str, bucket_name: str) -> bool:
+        """Drop the record -- the folder was reattached, or its data was purged."""
+        with self.transaction() as cur:
+            cur.execute(
+                "DELETE FROM detached_datasets WHERE local_path_key = ? AND bucket_name = ?",
+                (local_path_key, bucket_name),
+            )
+            return cur.rowcount > 0
 
     def upsert_sync_device(self, device: Device) -> bool:
         now = datetime.now().isoformat()

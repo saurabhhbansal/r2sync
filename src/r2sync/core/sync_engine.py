@@ -252,13 +252,16 @@ class SyncEngine:
 
         local_abs = os.path.abspath(local_path.strip())
 
+        bucket = bucket_name.strip()
+
         # "new" is the caller saying it wants a second, independent copy.
-        existing = (
-            None if initial_action == "new"
-            else self._find_reattachable_dataset(bucket_name.strip(), local_abs, name.strip())
-        )
-        dataset_id = existing.dataset_id if existing else uuid.uuid4().hex
-        remote_prefix = f"{SYNC_R2_ROOT}/{dataset_id}"
+        existing = None if initial_action == "new" else self._detached_dataset_for(local_abs, bucket)
+        if existing:
+            dataset_id = existing["dataset_id"]
+            remote_prefix = existing["remote_prefix"]
+        else:
+            dataset_id = uuid.uuid4().hex
+            remote_prefix = f"{SYNC_R2_ROOT}/{dataset_id}"
 
         dataset = SyncDataset(
             dataset_id=dataset_id,
@@ -297,12 +300,12 @@ class SyncEngine:
         # made an empty prefix, so this argument has been accepted and ignored
         # since it was introduced. Reattaching gives it something to decide.
         # --resync never deletes, so "newer" keeps both sides.
-        if existing is not None:
+        if existing:
             resync_mode = "path1" if initial_action == "replace" else "newer"
+            self.db.forget_detached_dataset(_canonical_fs_path(local_abs), bucket)
             self.db.add_activity(
                 "INFO", "sync",
-                f"'{dataset.name}' reconnected to the copy already in R2 "
-                f"({existing.total_files:,} files); no re-upload needed.",
+                f"'{dataset.name}' reconnected to the copy already in R2; no re-upload needed.",
             )
         else:
             resync_mode = "path1"
@@ -311,59 +314,27 @@ class SyncEngine:
         self.trigger_sync_async(dataset_id, resync_mode=resync_mode, force_resync=True)
         return dataset
 
-    def _find_reattachable_dataset(
-        self, bucket_name: str, local_path: str, name: str
-    ) -> Optional[RemoteDatasetInfo]:
-        """The dataset in R2 this folder already syncs to, if there is one.
+    def _detached_dataset_for(self, local_path: str, bucket_name: str) -> Optional[Dict[str, Any]]:
+        """Where this folder's data still lives, if its sync was removed before.
 
-        Adding a folder used to mint a fresh dataset id unconditionally, which
-        pointed at an empty prefix. Removing a sync and adding the same folder
-        back therefore uploaded the whole folder a second time and left the
-        first copy orphaned in the bucket -- still stored, still billed, no
-        longer shown anywhere. Every dataset already publishes enough identity
-        to recognise its own folder, so match on that instead of asking the
-        user to pick their dataset out of a list; they have no way to know
-        which one it is.
+        A dataset's remote location comes from its id, so adding a folder back
+        after removing its sync pointed at a fresh, empty prefix: the folder
+        uploaded all over again and the previous copy stayed in the bucket,
+        still stored and still billed, no longer shown anywhere.
 
-        Deliberately conservative. Only datasets this computer created are
-        considered, and only an unambiguous match is returned: reattaching to
-        the wrong dataset would merge two unrelated folders, which is far worse
-        than uploading twice. Anything unexpected -- no credentials, no
-        network, a bucket that will not list -- falls back to creating a new
-        dataset, exactly as before.
+        This reads a note written by :meth:`delete_dataset` rather than asking
+        R2 what is out there. Adding a folder is interactive and answers over
+        an IPC call with a fifteen-second budget; scanning the bucket meant a
+        credential-store lookup plus one rclone invocation per dataset, which
+        is slow with a few datasets and hangs the call outright when the
+        credential store is slow to answer. The bucket scan could also only
+        ever match this computer's own datasets, which is exactly what the
+        local note already records.
+
+        A dataset detached on a different installation is not found here; "Set
+        Up This PC" is the route for that, and it joins rather than re-uploads.
         """
-        try:
-            remote = self.discover_remote_datasets(bucket_name)
-        except Exception as e:
-            logger.debug(f"Could not look for an existing remote dataset: {e}")
-            return None
-
-        dev_id = self.db.get_or_create_device_id()
-        mine = [r for r in remote if r.created_by_device_id and r.created_by_device_id == dev_id]
-        if not mine:
-            return None
-
-        target = _canonical_fs_path(local_path)
-        candidates = [r for r in mine if r.local_path and _canonical_fs_path(r.local_path) == target]
-
-        if not candidates:
-            # Datasets created before the folder was published carry no path to
-            # compare, and their name is the only identity left. Names are the
-            # user's own words, so this is weaker than a path match -- it is a
-            # fallback for existing datasets, not the intended route.
-            wanted = name.strip().casefold()
-            candidates = [
-                r for r in mine if not r.local_path and r.name.strip().casefold() == wanted
-            ]
-
-        if len(candidates) == 1:
-            return candidates[0]
-        if len(candidates) > 1:
-            logger.info(
-                f"{len(candidates)} remote datasets match '{name}'; creating a new one rather "
-                "than guessing which to reattach to."
-            )
-        return None
+        return self.db.find_detached_dataset(_canonical_fs_path(local_path), bucket_name)
 
     def join_remote_dataset(
         self,
@@ -1067,6 +1038,15 @@ class SyncEngine:
                     )
                 except Exception as e:
                     logger.warning(f"Error purging remote dataset files: {e}")
+
+        # Remember where the data is, so re-adding this folder goes back to it
+        # instead of uploading the whole thing into a fresh prefix. Purging the
+        # remote files means there is nothing left to go back to.
+        path_key = _canonical_fs_path(dataset.local_path)
+        if delete_remote_files:
+            self.db.forget_detached_dataset(path_key, dataset.bucket_name)
+        else:
+            self.db.remember_detached_dataset(dataset, path_key)
 
         # Delete local bisync state directory
         workdir = get_dataset_bisync_dir(dataset_id)
