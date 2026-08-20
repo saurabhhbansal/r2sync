@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from r2sync.config import (
+    BISYNC_MAX_LOCK,
     RCLONE_BUFFER_SIZE,
     RCLONE_CHUNK_SIZE,
     RCLONE_CONCURRENCY,
@@ -238,6 +239,64 @@ def compute_max_delete_percent(
         return max(1, min(100, int(default_percent)))
     pct = math.ceil(threshold_files / known_total_files * 100)
     return max(1, min(100, pct))
+
+
+# ---------------------------------------------------------------------------
+# rclone bisync output markers
+#
+# These have to be matched precisely. rclone prints a *generic* recovery footer
+# after every critical error and after any interruption:
+#
+#     Bisync critical error: <the actual reason>
+#     Bisync aborted. Must run --resync to recover.
+#     Bisync interrupted. Must run --resync to recover.
+#
+# Matching the bare substring "must run --resync" therefore caught every single
+# bisync failure -- a permission error, a cancelled run, a network drop -- and
+# reported all of them as "the saved baseline is stale", masking the real cause
+# and triggering a full, pointless re-baseline of the whole dataset. Only the
+# specific diagnostics below actually mean the workdir listings are unusable.
+# ---------------------------------------------------------------------------
+
+# The saved baseline really is missing, empty or unreadable. Note that these
+# are the *prior* listings -- the snapshot in the workdir, not the live folder.
+_STALE_BASELINE_MARKERS = (
+    "cannot find prior path1 or path2 listings",
+    "cannot read prior listing of path1",
+    "cannot read prior listing of path2",
+    "empty prior path1 listing",
+    "empty prior path2 listing",
+    "filters file md5 hash not found (must run --resync)",
+    "filters file has changed (must run --resync)",
+)
+
+# The *live* folder is empty right now, which is a different situation: an
+# unmounted drive is indistinguishable from a deliberate wipe, so this is
+# surfaced for a human decision rather than auto-recovered.
+#
+# rclone renders both cases from one format string --
+#   "Empty %s listing. Cannot sync to an empty directory: %s"
+# with %s being "prior Path1" or "current Path1" -- so the shared tail
+# "cannot sync to an empty directory" cannot tell them apart. Matching on it
+# classified a merely stale baseline (which self-heals with a re-baseline) as
+# "your folder is empty, please confirm", parking the dataset in
+# needs_attention and waiting for a human who had nothing to decide.
+_EMPTY_SOURCE_MARKERS = (
+    "empty current path1 listing",
+    "empty current path2 listing",
+)
+
+# rclone's one-line summary of what actually went wrong. Captured so the user
+# sees the real reason instead of a generic "Sync was canceled or interrupted."
+_CRITICAL_ERROR_MARKER = "bisync critical error:"
+
+# rclone colourises its error lines even under --use-json-log, so the raw text
+# arrives wrapped in SGR escapes that would otherwise reach the UI verbatim.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+# Another bisync run holds the workdir lock, or a previous one was killed and
+# left the lock behind. Transient rather than a real failure.
+_LOCK_MARKER = "prior lock file found"
 
 
 def _is_same_fs(fs_label: str, local_path: str) -> bool:
@@ -767,11 +826,20 @@ class RcloneEngine:
             "--no-cleanup",
         ] + build_transfer_flags(prof)
 
-        if force_resync or resync_mode or not dataset.initial_sync_done:
+        did_resync = bool(force_resync or resync_mode or not dataset.initial_sync_done)
+        if did_resync:
             mode = resync_mode or "path1"
             args.extend(["--resync", "--resync-mode", mode])
         else:
             args.extend(["--recover", "--resilient"])
+
+        # bisync refuses to start while a lock file for these paths exists. If
+        # r2sync (or the machine) was killed mid-run that lock is never cleaned
+        # up, and *every* later sync for the dataset fails instantly with
+        # "prior lock file found" -- permanently, with no way out from the UI.
+        # --max-lock lets rclone expire an abandoned lock on its own, while a
+        # genuinely concurrent run keeps refreshing it and stays protected.
+        args.extend(["--max-lock", BISYNC_MAX_LOCK])
 
         # Mass deletion threshold safety, expressed the way bisync wants it.
         max_del_pct = compute_max_delete_percent(
@@ -817,6 +885,9 @@ class RcloneEngine:
             "all_changed_abort": False,
             "needs_resync": False,
             "empty_source_abort": False,
+            "lock_conflict": False,
+            "critical_error": None,
+            "did_resync": did_resync,
             "forced": force,
         }
 
@@ -848,7 +919,11 @@ class RcloneEngine:
                 log_f.write(f"Dataset: {dataset.name} (ID: {dataset.dataset_id})\n")
                 log_f.write(f"Local: {local_path}\n")
                 log_f.write(f"Remote: {remote_data_path}\n")
-                log_f.write(f"Mode: {'resync ' + str(resync_mode) if (force_resync or resync_mode or not dataset.initial_sync_done) else 'incremental'}\n\n")
+                log_f.write(f"Mode: {'resync ' + str(resync_mode or 'path1') if did_resync else 'incremental'}\n")
+                # The exact command line, so a log is enough to reproduce a run
+                # by hand. Credentials are passed through the environment and
+                # never appear in argv, so this is safe to write to disk.
+                log_f.write(f"Command: {subprocess.list2cmdline(args)}\n\n")
 
                 for line in iter(proc.stdout.readline, ""):
                     if not line:
@@ -884,12 +959,12 @@ class RcloneEngine:
                     # user data encoded in an empty baseline, so rebuilding it
                     # is safe -- and without it a dataset that happened to be
                     # empty when it was set up stays broken forever.
-                    if (
-                        "must run --resync" in low
-                        or "empty prior path1 listing" in low
-                        or "empty prior path2 listing" in low
-                        or "cannot find prior path1 or path2 listings" in low
-                    ):
+                    #
+                    # A run that itself carried --resync just rebuilt those
+                    # listings, so by definition its failure is something else;
+                    # diagnosing it as "stale baseline" would only hide the real
+                    # error behind an infinite re-baseline loop.
+                    if not did_resync and any(m in low for m in _STALE_BASELINE_MARKERS):
                         result_stats["needs_resync"] = True
 
                     # Distinct and deliberately NOT auto-recovered: the live
@@ -898,12 +973,25 @@ class RcloneEngine:
                     # everything", and re-baselining would either resurrect
                     # intentional deletions or propagate a bogus wipe. Surface
                     # it for a human decision instead.
-                    if (
-                        "empty current path1 listing" in low
-                        or "empty current path2 listing" in low
-                        or "cannot sync to an empty directory" in low
-                    ):
+                    if any(m in low for m in _EMPTY_SOURCE_MARKERS):
                         result_stats["empty_source_abort"] = True
+
+                    # Keep rclone's own one-line explanation. Without it every
+                    # failed run collapsed into the same generic message and the
+                    # user had to open the log to learn anything at all.
+                    if _CRITICAL_ERROR_MARKER in low:
+                        reason = line_clean[
+                            low.index(_CRITICAL_ERROR_MARKER) + len(_CRITICAL_ERROR_MARKER):
+                        ]
+                        reason = _ANSI_RE.sub("", reason).strip().strip('"').strip()
+                        if reason:
+                            result_stats["critical_error"] = reason
+
+                    # Either a concurrent run holds the workdir lock, or a
+                    # previous run was killed and left it behind. Neither is a
+                    # reason to alarm the user or to rebuild the baseline.
+                    if _LOCK_MARKER in low:
+                        result_stats["lock_conflict"] = True
 
                     try:
                         data = json.loads(line_clean)
@@ -1002,6 +1090,14 @@ class RcloneEngine:
                     "Sync paused: the folder on one side is now completely empty. "
                     "Confirm this was intentional, then re-sync to apply it."
                 )
+            elif result_stats["lock_conflict"]:
+                # Another run of these same paths holds the workdir lock. The
+                # caller retries; nothing is wrong with the dataset itself, so
+                # this must not be dressed up as a sync failure.
+                result_stats["success"] = False
+                result_stats["error_message"] = (
+                    "Another sync of this folder is still running; it will be retried."
+                )
             elif result_stats["needs_resync"]:
                 result_stats["success"] = False
                 result_stats["error_message"] = (
@@ -1012,6 +1108,12 @@ class RcloneEngine:
                 result_stats["error_message"] = (
                     "Bisync stopped because every tracked file changed on this computer."
                 )
+            elif result_stats["critical_error"]:
+                # rclone told us exactly what went wrong -- pass that through
+                # rather than the catch-all below, which used to report a disk
+                # permission error and a cancelled run as the same thing.
+                result_stats["success"] = False
+                result_stats["error_message"] = f"Sync failed: {result_stats['critical_error']}"
             elif exit_code == -15 or exit_code == 1:
                 if len(result_stats["conflicts_detected"]) > 0:
                     result_stats["error_message"] = "Conflicts detected during synchronization."

@@ -535,7 +535,7 @@ class SyncEngine:
             # work; --resync never deletes, so both sides survive.
             if (
                 result.get("needs_resync")
-                and not (force_resync or resync_mode)
+                and not result.get("did_resync")
                 and not self.is_cancel_requested(dataset_id)
             ):
                 logger.warning(
@@ -662,6 +662,26 @@ class SyncEngine:
                 message="One side of this folder is now empty. Confirm before syncing.",
                 notification_type="warning",
             )
+
+        elif result.get("lock_conflict"):
+            # A run of these same paths is still holding the bisync workdir
+            # lock. That is a scheduling collision, not a fault in the dataset:
+            # leave the previous status and error alone, keep the dataset marked
+            # dirty, and let the scheduler pick it up on the next tick. It used
+            # to be recorded as a hard error and raise a "Sync Failed" toast for
+            # every attempt that landed during a long-running sync.
+            logger.info(
+                f"Sync for '{dataset.name}' skipped: another run holds the bisync lock. "
+                "Queued for the next scheduler tick."
+            )
+            # _execute_sync flipped the row to "syncing" on the way in; without
+            # this the dataset would sit on that status forever.
+            waiting = SyncStatus.WAITING.value
+            if dataset.status in (SyncStatus.SYNCED.value, SyncStatus.CONFLICT.value):
+                waiting = dataset.status
+            self.db.update_sync_status(dataset_id, waiting)
+            dataset.status = waiting
+            self.mark_needs_sync(dataset_id)
 
         elif result.get("mass_deletion_triggered"):
             self.db.update_sync_status(

@@ -22,6 +22,23 @@ from r2sync.core.models import (
 from r2sync.utils.paths import get_database_path, get_device_id_path
 
 
+class _Unset:
+    """Sentinel distinguishing "leave this column alone" from "write NULL".
+
+    ``None`` cannot carry both meanings: ``update_sync_status`` needs a way to
+    *clear* ``last_error`` when a sync finally succeeds, which is different from
+    the far more common "this caller has nothing to say about the error field".
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return "<unset>"
+
+
+UNSET = _Unset()
+
+
 class Database:
     """Thread-safe SQLite database manager for r2sync."""
 
@@ -778,11 +795,19 @@ class Database:
         dataset_id: str,
         status: str,
         last_sync_at: Optional[str] = None,
-        last_error: Optional[str] = None,
+        last_error: Any = UNSET,
         total_files: Optional[int] = None,
         total_bytes: Optional[int] = None,
         initial_sync_done: Optional[bool] = None,
     ) -> None:
+        """Update a dataset's sync state.
+
+        Passing ``last_error=None`` explicitly *clears* the stored error;
+        omitting the argument leaves whatever is there untouched. The two used
+        to be indistinguishable, so a successful sync could never wipe the
+        message left by an earlier failure and datasets stayed decorated with a
+        stale "Sync was canceled or interrupted." long after they were healthy.
+        """
         with self.transaction() as cur:
             updates = ["status = ?", "updated_at = ?"]
             params = [status, datetime.now().isoformat()]
@@ -792,7 +817,7 @@ class Database:
             if last_sync_at is not None:
                 updates.append("last_sync_at = ?")
                 params.append(last_sync_at)
-            if last_error is not None:
+            if not isinstance(last_error, _Unset):
                 updates.append("last_error = ?")
                 params.append(last_error)
             if total_files is not None:

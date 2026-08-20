@@ -1,8 +1,13 @@
 """Global configuration constants and metadata for r2sync."""
 
+from r2sync import __version__
+
 APP_NAME = "r2sync"
 APP_DISPLAY_NAME = "r2sync"
-APP_VERSION = "1.2.2"
+# Single source of truth: r2sync/__init__.py. This value is what the IPC
+# ``ping`` reply reports, so a hand-maintained copy here silently made
+# ``r2sync-cli status`` claim a different build than the one actually running.
+APP_VERSION = __version__
 APP_AUTHOR = "r2sync contributors"
 APP_DESCRIPTION = "Native, private, open-source backup tool for Cloudflare R2"
 
@@ -72,6 +77,19 @@ SYNC_DEFAULT_RECONCILE_INTERVAL_MINUTES = 30
 # scheduler tick rather than dropped.
 SYNC_MAX_CONCURRENT_DATASETS = 2
 SYNC_DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60
+# Passed to bisync as --max-lock. rclone refuses to start a run while a lock
+# file for the same path pair exists, and a run killed by a crash, a reboot or
+# Task Manager never removes its own lock -- which wedged the dataset
+# permanently, every subsequent sync failing in a fraction of a second with
+# "prior lock file found" and no way to clear it from the UI.
+#
+# This is safe for arbitrarily long syncs: with --max-lock set, rclone renews
+# the lock file every max-lock/2 for as long as the run is alive (verified
+# against v1.68.2 -- a 2m lock was rewritten every 60s mid-run), so only an
+# *abandoned* lock ever expires. The value therefore only decides how long a
+# dataset stays stuck after a crash, not how long a sync may take. rclone's own
+# minimum is 2m; 5m leaves a comfortable margin over the 2.5m renewal cycle.
+BISYNC_MAX_LOCK = "5m"
 
 # Cloudflare R2 Pricing Reference (for UI visibility & estimation)
 CLOUDFLARE_R2_STORAGE_PRICE_PER_GB_MONTH = 0.015  # $0.015 / GB-month
