@@ -55,3 +55,15 @@ def isolated_app_data(tmp_path_factory, monkeypatch):
     data_dir = tmp_path_factory.mktemp("r2sync-data")
     monkeypatch.setenv("R2SYNC_DATA_DIR", str(data_dir))
     yield
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Record each phase's report on the item so fixtures can see the outcome.
+
+    Teardown normally cannot tell a passing test from a failing one, which is
+    what :func:`tests.test_sync_e2e.harness` needs in order to dump rclone's
+    own log only when something actually went wrong.
+    """
+    outcome = yield
+    setattr(item, f"rep_{outcome.get_result().when}", outcome.get_result())

@@ -116,7 +116,7 @@ class Harness:
 
 
 @pytest.fixture
-def harness(tmp_path, monkeypatch):
+def harness(tmp_path, monkeypatch, request):
     data_dir = tmp_path / "appdata"
     (data_dir / "rclone").mkdir(parents=True)
     # Must match get_rclone_executable_path(), which appends ".exe" on Windows.
@@ -173,6 +173,16 @@ def harness(tmp_path, monkeypatch):
 
     engine.stop_all_watchers()
     db.close()
+
+    # A failed assertion here reads "assert [] == [...]" and says nothing about
+    # why rclone declined to transfer anything. The bisync log holds the exact
+    # command line and rclone's own diagnostics, and is otherwise thrown away
+    # with tmp_path -- which left a Windows-only failure undebuggable from a CI
+    # log. Dump it on failure only, so passing runs stay quiet.
+    if getattr(request.node, "rep_call", None) is not None and request.node.rep_call.failed:
+        for log in sorted((data_dir / "logs").glob("*.log")):
+            print(f"\n----- {log.name} -----")
+            print(log.read_text(encoding="utf-8", errors="replace"))
 
 
 # ---------------------------------------------------------------------------
