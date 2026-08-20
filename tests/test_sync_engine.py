@@ -324,3 +324,57 @@ def test_asking_for_a_new_copy_does_not_reattach(db_fixture, monkeypatch, tmp_pa
                                         bucket_name="bkt", initial_action="new")
 
     assert ds.dataset_id != "ds-existing"
+
+
+# ---------------------------------------------------------------------------
+# Connectivity probing
+# ---------------------------------------------------------------------------
+
+
+def test_connectivity_check_does_not_touch_the_global_socket_timeout(monkeypatch):
+    """It used to call socket.setdefaulttimeout and never put it back.
+
+    That is process-global, so a single connectivity check imposed its 3-second
+    timeout on every socket the GUI and daemon opened afterwards.
+    """
+    import socket as socket_mod
+    from r2sync.utils import system
+
+    monkeypatch.setattr(system.socket, "create_connection",
+                        lambda addr, timeout=None: MagicMock())
+
+    before = socket_mod.getdefaulttimeout()
+    assert system.check_internet_connection() is True
+    assert socket_mod.getdefaulttimeout() == before
+
+
+def test_a_blocked_dns_port_does_not_report_the_machine_as_offline(monkeypatch):
+    """Port 53 to a public resolver is routinely blocked while 443 is fine.
+
+    The old check probed only 1.1.1.1:53, so those networks marked every
+    dataset Offline even though R2 was reachable the whole time.
+    """
+    from r2sync.utils import system
+
+    reached = []
+
+    def only_443(addr, timeout=None):
+        host, port = addr
+        reached.append(port)
+        if port != 443:
+            raise OSError("blocked")
+        return MagicMock()
+
+    monkeypatch.setattr(system.socket, "create_connection", only_443)
+    assert system.check_internet_connection() is True
+    assert 443 in reached
+
+
+def test_genuinely_offline_is_still_reported_as_offline(monkeypatch):
+    from r2sync.utils import system
+
+    def unreachable(addr, timeout=None):
+        raise OSError("network is unreachable")
+
+    monkeypatch.setattr(system.socket, "create_connection", unreachable)
+    assert system.check_internet_connection() is False

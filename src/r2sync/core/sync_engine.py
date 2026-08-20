@@ -32,7 +32,12 @@ from r2sync.core.models import (
     SyncScheduleMode,
     SyncStatus,
 )
-from r2sync.core.rclone_engine import RcloneBinaryManager, RcloneEngine, _canonical_fs_path
+from r2sync.core.rclone_engine import (
+    RcloneBinaryManager,
+    RcloneEngine,
+    TransferPhaseTracker,
+    _canonical_fs_path,
+)
 from r2sync.core.watcher import DebouncedWatcherManager
 from r2sync.notifications.notifier import NotificationManager
 from r2sync.utils.paths import get_dataset_bisync_dir
@@ -598,6 +603,13 @@ class SyncEngine:
                 p.estimated_total_files = est.union_files
             self._broadcast_progress(p)
 
+        # One tracker for the whole sync, not one per bisync run. The retries
+        # below are still the same sync as far as the user is concerned, and a
+        # fresh tracker in each would restart the totals -- which is what made
+        # a sync announce a folder-sized figure and then finish reporting only
+        # the last run's much smaller queue.
+        sync_tracker = TransferPhaseTracker()
+
         try:
             result = self.rclone_engine.run_bisync(
                 dataset=dataset,
@@ -607,6 +619,7 @@ class SyncEngine:
                 creds=creds,
                 speed_profile=speed_prof,
                 estimate=estimator.estimate,
+                phase_tracker=sync_tracker,
             )
 
             # A critical bisync abort leaves the workdir listings unusable, so
@@ -635,6 +648,7 @@ class SyncEngine:
                     creds=creds,
                     speed_profile=speed_prof,
                     estimate=estimator.estimate,
+                    phase_tracker=sync_tracker,
                 )
 
             # bisync aborts when 100% of the tracked files changed on one side.
@@ -663,6 +677,7 @@ class SyncEngine:
                     speed_profile=speed_prof,
                     estimate=estimator.estimate,
                     force=True,
+                    phase_tracker=sync_tracker,
                 )
         finally:
             estimator.stop()

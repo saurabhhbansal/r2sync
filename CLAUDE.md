@@ -44,7 +44,7 @@ R2SYNC_TEST_RCLONE=/path/to/rclone QT_QPA_PLATFORM=offscreen pytest -q
 R2SYNC_REQUIRE_FULL_SUITE=1 QT_QPA_PLATFORM=offscreen pytest -v -rs
 ```
 
-Expect **163 passed, 1 skipped** on Linux with rclone present. The one skip is
+Expect **177 passed, 1 skipped** on Linux with rclone present. The one skip is
 `test_service_restore.py::…` — a Windows-registry test that runs on the Windows
 CI leg.
 

@@ -22,16 +22,45 @@ def is_windows() -> bool:
     return sys.platform == "win32"
 
 
-def check_internet_connection(host: str = "1.1.1.1", port: int = 53, timeout: float = 3.0) -> bool:
-    """Check internet connectivity via DNS reachability."""
-    try:
-        socket.setdefaulttimeout(timeout)
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((host, port))
-        s.close()
-        return True
-    except Exception:
-        return False
+# Probed in order until one answers. Port 443 comes first because that is what
+# r2sync actually needs; the original check only tried DNS on port 53, which
+# plenty of corporate networks, VPNs and consumer routers block outright while
+# R2 itself is perfectly reachable -- and a dataset that fails this check is
+# marked Offline and stops syncing until a later attempt succeeds.
+#
+# The IP-literal probe needs no name resolution; the hostname probe needs DNS
+# to work, which rclone will also need. Trying both, and accepting either, is
+# deliberate: a false "offline" stops synchronization altogether, while a false
+# "online" only lets rclone attempt the transfer and report what really failed.
+_CONNECTIVITY_PROBES = (
+    ("1.1.1.1", 443),
+    ("cloudflare.com", 443),
+    ("1.1.1.1", 53),
+)
+
+
+def check_internet_connection(
+    host: Optional[str] = None, port: Optional[int] = None, timeout: float = 3.0
+) -> bool:
+    """True when anything out on the internet answers.
+
+    Pass ``host``/``port`` to probe one specific endpoint instead of the
+    built-in list.
+    """
+    probes = ((host, port or 443),) if host else _CONNECTIVITY_PROBES
+
+    for probe_host, probe_port in probes:
+        try:
+            # A per-socket timeout. This used to call socket.setdefaulttimeout,
+            # which is process-global and was never restored, so one
+            # connectivity check silently imposed its timeout on every socket
+            # the GUI and daemon opened afterwards.
+            with socket.create_connection((probe_host, probe_port), timeout=timeout):
+                return True
+        except OSError as e:
+            logger.debug(f"Connectivity probe {probe_host}:{probe_port} failed: {e}")
+
+    return False
 
 
 def set_windows_autostart(app_name: str, app_path: str, enable: bool = True) -> bool:

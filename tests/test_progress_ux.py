@@ -178,3 +178,31 @@ def test_estimate_union_is_an_upper_bound():
 def test_estimate_is_incomplete_when_the_remote_scan_failed():
     est = DatasetEstimate(local_complete=True, remote_complete=False)
     assert est.complete is False
+
+
+def test_a_rebaseline_retry_does_not_shrink_the_reported_total():
+    """One sync, two bisync runs: the denominator must not restart.
+
+    A stale baseline makes _execute_sync run bisync a second time, and each run
+    only ever sees its own transfer queue. With a tracker per run, a sync that
+    had already announced a large total finished reporting the second run's
+    much smaller one -- "200 MB / 200 MB" for a folder many times that size.
+    """
+    from r2sync.core.rclone_engine import TransferPhaseTracker
+
+    tracker = TransferPhaseTracker()
+
+    # First run: rclone discovers and moves a large queue.
+    _, _, total, files = tracker.observe(
+        {"transfers": 1, "bytes": 1, "totalBytes": 1_150_000_000, "totalTransfers": 4200}
+    )
+    assert total == 1_150_000_000
+
+    # Second run over the same tracker reports a far smaller queue of its own.
+    phase, totals_final, total, files = tracker.observe(
+        {"transfers": 1, "bytes": 1, "totalBytes": 209_715_200, "totalTransfers": 300}
+    )
+
+    assert total == 1_150_000_000, "the total shrank partway through one sync"
+    assert files == 4200
+    assert totals_final and phase == TransferPhaseTracker.PHASE_TRANSFERRING

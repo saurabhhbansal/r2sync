@@ -813,12 +813,20 @@ class RcloneEngine:
         speed_profile: Optional[str] = None,
         estimate: Optional[Any] = None,
         force: bool = False,
+        phase_tracker: Optional["TransferPhaseTracker"] = None,
     ) -> Dict[str, Any]:
         """Execute bidirectional synchronization between local path and R2 dataset namespace.
 
         ``estimate`` is an optional :class:`~r2sync.core.prescan.DatasetEstimate`
         carrying independently measured dataset totals. It is only forwarded to
         progress listeners for display and never gates the transfer.
+
+        Pass ``phase_tracker`` to continue a previous run's totals. One sync
+        the user asked for can run bisync more than once -- a stale baseline is
+        rebuilt by a second run -- and each run only knows about its own
+        transfer queue. Starting a fresh tracker there made the denominator
+        shrink partway through, reporting "200 MB / 200 MB" for a sync whose
+        first run had already announced a far larger figure.
         """
         exe_path = RcloneBinaryManager.get_executable_path()
         env = self._build_env(creds)
@@ -915,7 +923,7 @@ class RcloneEngine:
         }
 
         log_lines: List[str] = []
-        phase_tracker = TransferPhaseTracker()
+        phase_tracker = phase_tracker or TransferPhaseTracker()
         estimated_bytes = int(estimate.union_bytes) if estimate else 0
         estimated_files = int(estimate.union_files) if estimate else 0
 

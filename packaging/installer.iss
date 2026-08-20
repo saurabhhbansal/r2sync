@@ -1,6 +1,6 @@
 // Inno Setup Script for r2sync Windows Installer
 #define MyAppName "r2sync"
-#define MyAppVersion "1.2.4"
+#define MyAppVersion "1.2.5"
 #define MyAppPublisher "saurabhhbansal"
 #define MyAppURL "https://github.com/saurabhhbansal/r2sync"
 #define MyAppExeName "r2sync.exe"
