@@ -128,7 +128,13 @@ def harness(tmp_path, monkeypatch, request):
     # far short of it -- path2 there is the string "r2:bucket/..." rather than
     # a second absolute path -- so give just the two synced trees a short root
     # of their own and leave everything else under tmp_path.
-    synced_root = Path(tempfile.mkdtemp(prefix="r2e2e"))
+    # .resolve() because on Windows mkdtemp answers out of %TEMP%, which the CI
+    # runner sets to the 8.3 short form (C:\Users\RUNNER~1\...). rclone reports
+    # the long form back in its stats, so _is_same_fs compared two spellings of
+    # one directory, matched neither side of a transfer to the local folder and
+    # labelled every download "sync". pytest's tmp_path is already resolved,
+    # which is why this only appeared once the root moved off it.
+    synced_root = Path(tempfile.mkdtemp(prefix="r2e2e")).resolve()
     request.addfinalizer(lambda: shutil.rmtree(synced_root, ignore_errors=True))
 
     data_dir = tmp_path / "appdata"
