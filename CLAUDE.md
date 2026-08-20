@@ -44,7 +44,7 @@ R2SYNC_TEST_RCLONE=/path/to/rclone QT_QPA_PLATFORM=offscreen pytest -q
 R2SYNC_REQUIRE_FULL_SUITE=1 QT_QPA_PLATFORM=offscreen pytest -v -rs
 ```
 
-Expect **187 passed, 1 skipped** on Linux with rclone present. The one skip is
+Expect **189 passed, 1 skipped** on Linux with rclone present. The one skip is
 `test_service_restore.py::…` — a Windows-registry test that runs on the Windows
 CI leg.
 
@@ -120,6 +120,17 @@ which makes the updater offer users the build they are already running.
 
 ## Things that bite
 
+- **Nothing can close r2sync politely.** Both executables are onefile
+  PyInstaller builds, so a running copy holds its own `.exe` open. Restart
+  Manager closes an application by asking its window to shut: the GUI hides to
+  the tray instead of exiting, and the service has no window at all. Setup then
+  falls back to replacing the files on reboot and reports that a restart is
+  needed, which is why installing over an existing copy failed. It takes both
+  `CloseApplications=force` in `installer.iss` *and*
+  `/FORCECLOSEAPPLICATIONS` from `updater.py` -- the plain `/CLOSEAPPLICATIONS`
+  switch overrides the script setting back to the form that fails -- plus the
+  `PrepareToInstall` taskkill, which does not depend on Restart Manager
+  reaching a windowless process at all.
 - **A dataset's remote location is its identity.** `remote_prefix` comes from
   the dataset id, so a fresh id means a fresh, empty prefix -- re-adding a
   folder used to upload it all over again and orphan the previous copy in the

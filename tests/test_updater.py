@@ -188,3 +188,32 @@ def test_unsupported_digest_algorithm_degrades_gracefully(tmp_path):
         path = AutoUpdater.download_update(info, target_path=out)
 
     assert path.read_bytes() == payload
+
+
+def test_a_silent_update_forces_the_running_app_and_service_closed(tmp_path):
+    """/CLOSEAPPLICATIONS is not enough to update over a running r2sync.
+
+    The polite switch asks each application's window to close. The GUI hides to
+    the tray instead of exiting and the service has no window at all, so Setup
+    left both .exe files in use, announced that a restart was required, and the
+    update never landed. It is also the command-line half of
+    CloseApplications=force in installer.iss: passing the plain switch here
+    would override that back to the form that fails.
+    """
+    installer = tmp_path / "r2sync-setup.exe"
+    installer.write_bytes(b"MZ")
+
+    with patch("r2sync.core.updater.subprocess.Popen") as popen:
+        assert AutoUpdater.apply_update_windows(installer) is True
+
+    cmd = popen.call_args[0][0]
+    assert cmd[0] == str(installer)
+    assert "/FORCECLOSEAPPLICATIONS" in cmd
+    assert "/CLOSEAPPLICATIONS" not in cmd
+    assert "/NORESTART" in cmd
+
+
+def test_a_missing_installer_is_not_launched(tmp_path):
+    with patch("r2sync.core.updater.subprocess.Popen") as popen:
+        assert AutoUpdater.apply_update_windows(tmp_path / "nope.exe") is False
+    popen.assert_not_called()

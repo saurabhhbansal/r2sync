@@ -209,7 +209,16 @@ class AutoUpdater:
         try:
             cmd = [str(installer_path)]
             if silent:
-                cmd.extend(["/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS"])
+                # /FORCECLOSEAPPLICATIONS, not /CLOSEAPPLICATIONS. The polite
+                # form asks each application's window to close, and an update
+                # has to get past two that will not go: the GUI hides to the
+                # tray rather than exiting, and the service has no window at
+                # all. Setup then leaves the running .exe files in place, tells
+                # the user a restart is required, and the update does not land.
+                # This is also the command-line half of CloseApplications=force
+                # in installer.iss -- passing the plain switch here would put
+                # the setting back to the one that fails.
+                cmd.extend(["/SILENT", "/NORESTART", "/FORCECLOSEAPPLICATIONS"])
 
             flags = 0x08000000 if sys.platform == "win32" else 0
             subprocess.Popen(cmd, creationflags=flags)
