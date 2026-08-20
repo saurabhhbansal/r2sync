@@ -1267,6 +1267,8 @@ class RcloneEngine:
                         name=data.get("name", dataset_id),
                         bucket_name=bucket_name,
                         created_by_device=data.get("created_by_device", "Unknown"),
+                        created_by_device_id=data.get("created_by_device_id", ""),
+                        local_path=data.get("local_path", ""),
                         created_at=data.get("created_at", datetime.now().isoformat()),
                         total_files=data.get("total_files", 0),
                         total_bytes=data.get("total_bytes", 0),
@@ -1286,6 +1288,9 @@ class RcloneEngine:
             "bucket_name": dataset.bucket_name,
             "created_by_device": device.device_name,
             "created_by_device_id": device.device_id,
+            # The folder this dataset syncs on its creating computer. Recorded
+            # so re-adding that folder can find its way back here.
+            "local_path": dataset.local_path,
             "created_at": dataset.created_at,
             "protocol_version": SYNC_PROTOCOL_VERSION,
             "total_files": dataset.total_files,

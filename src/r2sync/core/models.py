@@ -348,6 +348,12 @@ class RemoteDatasetInfo:
     name: str
     bucket_name: str
     created_by_device: str = "Unknown"
+    # Which computer and which folder this dataset was created from. Together
+    # they let a re-added folder be matched back to the data it already has in
+    # R2 instead of starting a second copy. Datasets written before these were
+    # published carry empty strings, so treat absence as "unknown", not "no".
+    created_by_device_id: str = ""
+    local_path: str = ""
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     total_files: int = 0
     total_bytes: int = 0

@@ -32,7 +32,7 @@ from r2sync.core.models import (
     SyncScheduleMode,
     SyncStatus,
 )
-from r2sync.core.rclone_engine import RcloneBinaryManager, RcloneEngine
+from r2sync.core.rclone_engine import RcloneBinaryManager, RcloneEngine, _canonical_fs_path
 from r2sync.core.watcher import DebouncedWatcherManager
 from r2sync.notifications.notifier import NotificationManager
 from r2sync.utils.paths import get_dataset_bisync_dir
@@ -237,10 +237,22 @@ class SyncEngine:
         exclude_patterns: Optional[List[str]] = None,
         initial_action: str = "merge",  # "merge", "replace", "new"
     ) -> SyncDataset:
-        """Create a brand new Sync dataset, register device, and perform initial synchronization."""
+        """Create a Sync dataset, register device, and perform initial synchronization.
+
+        A folder this computer has synced before is reattached to the data it
+        already has in R2 rather than started over -- see
+        :meth:`_find_reattachable_dataset`.
+        """
         import uuid
 
-        dataset_id = uuid.uuid4().hex
+        local_abs = os.path.abspath(local_path.strip())
+
+        # "new" is the caller saying it wants a second, independent copy.
+        existing = (
+            None if initial_action == "new"
+            else self._find_reattachable_dataset(bucket_name.strip(), local_abs, name.strip())
+        )
+        dataset_id = existing.dataset_id if existing else uuid.uuid4().hex
         remote_prefix = f"{SYNC_R2_ROOT}/{dataset_id}"
 
         dataset = SyncDataset(
@@ -275,9 +287,78 @@ class SyncEngine:
         )
         self.db.upsert_sync_device(current_dev)
 
+        # "merge" and "replace" only ever differed when the other side already
+        # held data, and until reattachment existed it never did: every add
+        # made an empty prefix, so this argument has been accepted and ignored
+        # since it was introduced. Reattaching gives it something to decide.
+        # --resync never deletes, so "newer" keeps both sides.
+        if existing is not None:
+            resync_mode = "path1" if initial_action == "replace" else "newer"
+            self.db.add_activity(
+                "INFO", "sync",
+                f"'{dataset.name}' reconnected to the copy already in R2 "
+                f"({existing.total_files:,} files); no re-upload needed.",
+            )
+        else:
+            resync_mode = "path1"
+
         # Launch initial sync in background
-        self.trigger_sync_async(dataset_id, resync_mode="path1", force_resync=True)
+        self.trigger_sync_async(dataset_id, resync_mode=resync_mode, force_resync=True)
         return dataset
+
+    def _find_reattachable_dataset(
+        self, bucket_name: str, local_path: str, name: str
+    ) -> Optional[RemoteDatasetInfo]:
+        """The dataset in R2 this folder already syncs to, if there is one.
+
+        Adding a folder used to mint a fresh dataset id unconditionally, which
+        pointed at an empty prefix. Removing a sync and adding the same folder
+        back therefore uploaded the whole folder a second time and left the
+        first copy orphaned in the bucket -- still stored, still billed, no
+        longer shown anywhere. Every dataset already publishes enough identity
+        to recognise its own folder, so match on that instead of asking the
+        user to pick their dataset out of a list; they have no way to know
+        which one it is.
+
+        Deliberately conservative. Only datasets this computer created are
+        considered, and only an unambiguous match is returned: reattaching to
+        the wrong dataset would merge two unrelated folders, which is far worse
+        than uploading twice. Anything unexpected -- no credentials, no
+        network, a bucket that will not list -- falls back to creating a new
+        dataset, exactly as before.
+        """
+        try:
+            remote = self.discover_remote_datasets(bucket_name)
+        except Exception as e:
+            logger.debug(f"Could not look for an existing remote dataset: {e}")
+            return None
+
+        dev_id = self.db.get_or_create_device_id()
+        mine = [r for r in remote if r.created_by_device_id and r.created_by_device_id == dev_id]
+        if not mine:
+            return None
+
+        target = _canonical_fs_path(local_path)
+        candidates = [r for r in mine if r.local_path and _canonical_fs_path(r.local_path) == target]
+
+        if not candidates:
+            # Datasets created before the folder was published carry no path to
+            # compare, and their name is the only identity left. Names are the
+            # user's own words, so this is weaker than a path match -- it is a
+            # fallback for existing datasets, not the intended route.
+            wanted = name.strip().casefold()
+            candidates = [
+                r for r in mine if not r.local_path and r.name.strip().casefold() == wanted
+            ]
+
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            logger.info(
+                f"{len(candidates)} remote datasets match '{name}'; creating a new one rather "
+                "than guessing which to reattach to."
+            )
+        return None
 
     def join_remote_dataset(
         self,

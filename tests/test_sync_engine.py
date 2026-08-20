@@ -179,3 +179,148 @@ def test_conflicts_recording_and_resolution(db_fixture):
         assert not conflict_file.exists()
         assert orig_file.read_text() == "Local original content"
         assert db_fixture.count_unresolved_conflicts("ds-conflict-test") == 0
+
+
+# ---------------------------------------------------------------------------
+# Reattaching a folder to the dataset it already has in R2
+# ---------------------------------------------------------------------------
+
+
+def _engine_with_remote(db, remote, monkeypatch):
+    """A SyncEngine whose bucket contains ``remote``, with no rclone anywhere."""
+    engine = SyncEngine(db=db)
+    monkeypatch.setattr(engine, "discover_remote_datasets", lambda bucket_name=None: list(remote))
+    return engine
+
+
+def _remote_info(db, **kw):
+    defaults = dict(
+        dataset_id="ds-existing",
+        name="Photos",
+        bucket_name="bkt",
+        created_by_device_id=db.get_or_create_device_id(),
+        local_path="/home/u/Photos",
+        total_files=900,
+    )
+    defaults.update(kw)
+    return RemoteDatasetInfo(**defaults)
+
+
+def test_a_folder_this_pc_already_synced_is_matched_by_its_path(db_fixture, monkeypatch):
+    """The headline case: remove a sync, add the same folder, do not re-upload."""
+    existing = _remote_info(db_fixture)
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+
+    found = engine._find_reattachable_dataset("bkt", "/home/u/Photos", "Photos")
+    assert found is not None and found.dataset_id == "ds-existing"
+
+
+def test_reattachment_ignores_how_the_path_is_spelled(db_fixture, monkeypatch):
+    """rclone and the folder picker disagree on Windows; see _canonical_fs_path."""
+    existing = _remote_info(db_fixture, local_path="//?/C:/Users/me/Photos")
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+
+    assert engine._find_reattachable_dataset("bkt", r"C:\Users\me\Photos", "Photos") is not None
+
+
+def test_a_different_folder_is_not_reattached(db_fixture, monkeypatch):
+    existing = _remote_info(db_fixture)
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+
+    assert engine._find_reattachable_dataset("bkt", "/home/u/Music", "Music") is None
+
+
+def test_another_computers_dataset_is_never_reattached(db_fixture, monkeypatch):
+    """That is what "Set Up This PC" is for, and it downloads rather than merges."""
+    existing = _remote_info(db_fixture, created_by_device_id="some-other-pc")
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+
+    assert engine._find_reattachable_dataset("bkt", "/home/u/Photos", "Photos") is None
+
+
+def test_datasets_without_a_published_path_fall_back_to_the_name(db_fixture, monkeypatch):
+    """Anything created before local_path was recorded still has to be findable."""
+    legacy = _remote_info(db_fixture, local_path="")
+    engine = _engine_with_remote(db_fixture, [legacy], monkeypatch)
+
+    assert engine._find_reattachable_dataset("bkt", "/home/u/Photos", "photos") is not None
+    assert engine._find_reattachable_dataset("bkt", "/home/u/Photos", "Videos") is None
+
+
+def test_an_ambiguous_match_creates_a_new_dataset_instead_of_guessing(db_fixture, monkeypatch):
+    """Merging two unrelated folders is worse than uploading one of them twice."""
+    a = _remote_info(db_fixture, dataset_id="ds-a", local_path="")
+    b = _remote_info(db_fixture, dataset_id="ds-b", local_path="")
+    engine = _engine_with_remote(db_fixture, [a, b], monkeypatch)
+
+    assert engine._find_reattachable_dataset("bkt", "/home/u/Photos", "Photos") is None
+
+
+def test_a_bucket_that_cannot_be_listed_still_lets_the_folder_be_added(db_fixture, monkeypatch):
+    """Offline, or without credentials, adding a folder must not fail."""
+    engine = SyncEngine(db=db_fixture)
+
+    def boom(bucket_name=None):
+        raise RuntimeError("no credentials")
+
+    monkeypatch.setattr(engine, "discover_remote_datasets", boom)
+    assert engine._find_reattachable_dataset("bkt", "/home/u/Photos", "Photos") is None
+
+
+def test_readding_a_folder_reuses_its_remote_prefix_instead_of_uploading_again(
+    db_fixture, monkeypatch, tmp_path
+):
+    """Delete a sync, add the same folder back: it must land on the same data.
+
+    A fresh dataset id points at an empty prefix, so the whole folder uploads
+    a second time and the first copy is orphaned in the bucket. This is the
+    regression that costs the user storage and bandwidth, so assert on the
+    prefix rather than on the lookup helper.
+    """
+    folder = tmp_path / "Photos"
+    folder.mkdir()
+    existing = _remote_info(db_fixture, local_path=str(folder))
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+
+    triggered = {}
+    monkeypatch.setattr(engine, "trigger_sync_async",
+                        lambda ds_id, **kw: triggered.update(dataset_id=ds_id, **kw))
+
+    ds = engine.create_and_init_dataset(name="Photos", local_path=str(folder), bucket_name="bkt")
+
+    assert ds.dataset_id == "ds-existing"
+    assert ds.remote_prefix.endswith("ds-existing")
+    # --resync never deletes, so "newer" leaves both sides intact.
+    assert triggered["resync_mode"] == "newer"
+
+
+def test_replace_still_makes_the_remote_match_the_local_folder(
+    db_fixture, monkeypatch, tmp_path
+):
+    """initial_action reached create_and_init_dataset and was ignored entirely."""
+    folder = tmp_path / "Photos"
+    folder.mkdir()
+    existing = _remote_info(db_fixture, local_path=str(folder))
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+
+    triggered = {}
+    monkeypatch.setattr(engine, "trigger_sync_async",
+                        lambda ds_id, **kw: triggered.update(dataset_id=ds_id, **kw))
+
+    engine.create_and_init_dataset(name="Photos", local_path=str(folder),
+                                   bucket_name="bkt", initial_action="replace")
+
+    assert triggered["resync_mode"] == "path1"
+
+
+def test_asking_for_a_new_copy_does_not_reattach(db_fixture, monkeypatch, tmp_path):
+    folder = tmp_path / "Photos"
+    folder.mkdir()
+    existing = _remote_info(db_fixture, local_path=str(folder))
+    engine = _engine_with_remote(db_fixture, [existing], monkeypatch)
+    monkeypatch.setattr(engine, "trigger_sync_async", lambda ds_id, **kw: None)
+
+    ds = engine.create_and_init_dataset(name="Photos", local_path=str(folder),
+                                        bucket_name="bkt", initial_action="new")
+
+    assert ds.dataset_id != "ds-existing"
