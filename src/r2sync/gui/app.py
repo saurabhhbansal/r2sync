@@ -45,8 +45,30 @@ from r2sync.gui.wizard.setup_wizard import SetupWizard
 logger = logging.getLogger(__name__)
 
 
+def _as_payload(event) -> dict:
+    """Normalise an engine event object into the plain dict the views expect."""
+    if isinstance(event, dict):
+        return event
+    if hasattr(event, "to_dict"):
+        return event.to_dict()
+    return dict(vars(event))
+
+
 class MainWindow(QMainWindow):
     """Primary application window matching Stitch Design."""
+
+    # Engine progress/completion callbacks arrive on a sync worker thread, and
+    # IPC events arrive on the client's socket-reader thread. Neither may touch
+    # a widget: Qt requires all GUI access on the GUI thread, and doing it from
+    # a worker segfaults the process (reproducibly, in the middle of an
+    # ordinary sync). Emitting these instead hands the payload to Qt, which
+    # queues it and runs the handler on the GUI thread. Signals are the whole
+    # mechanism here -- the handlers below must never be registered as
+    # callbacks directly.
+    job_progress_received = Signal(object)
+    job_completed_received = Signal(object)
+    sync_progress_received = Signal(object)
+    sync_completed_received = Signal(object)
 
     def __init__(self, ipc_client: IPCClient, db: Database):
         super().__init__()
@@ -67,6 +89,9 @@ class MainWindow(QMainWindow):
 
         self._init_ui()
         self._setup_tray()
+        # Before _setup_engine: it starts the scheduler and the watchers, which
+        # can emit before the window has finished constructing.
+        self._connect_worker_signals()
         self._setup_engine()
         self._setup_timers()
         self._connect_signals()
@@ -111,18 +136,20 @@ class MainWindow(QMainWindow):
                 notifier=notifier,
             )
 
-            # Connect internal engine callbacks to GUI progress methods
+            # Connect internal engine callbacks to GUI progress methods. These
+            # fire on sync/backup worker threads, so they only ever emit -- Qt
+            # delivers the payload on the GUI thread.
             self.internal_backup_engine.add_progress_listener(
-                lambda p: self._on_ipc_progress(p.to_dict() if hasattr(p, "to_dict") else p.__dict__)
+                lambda p: self.job_progress_received.emit(_as_payload(p))
             )
             self.internal_backup_engine.add_completion_listener(
-                lambda r: self._on_ipc_completed(r.to_dict() if hasattr(r, "to_dict") else r.__dict__)
+                lambda r: self.job_completed_received.emit(_as_payload(r))
             )
             self.internal_sync_engine.add_progress_listener(
-                lambda p: self._on_sync_progress(p.to_dict() if hasattr(p, "to_dict") else p.__dict__)
+                lambda p: self.sync_progress_received.emit(_as_payload(p))
             )
             self.internal_sync_engine.add_completion_listener(
-                lambda ds, res: self._on_sync_completed(res)
+                lambda ds, res: self.sync_completed_received.emit(_as_payload(res))
             )
 
             self.internal_scheduler = JobScheduler(
@@ -310,17 +337,25 @@ class MainWindow(QMainWindow):
         self.tray.quit_requested.connect(self._on_force_quit)
         self.tray.show()
 
+    def _connect_worker_signals(self):
+        """The GUI-thread hop for everything that arrives from a worker thread."""
+        self.job_progress_received.connect(self._on_ipc_progress)
+        self.job_completed_received.connect(self._on_ipc_completed)
+        self.sync_progress_received.connect(self._on_sync_progress)
+        self.sync_completed_received.connect(self._on_sync_completed)
+
     def _setup_timers(self):
         # Periodic data refresher (every 5 seconds)
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh_all_data)
         self.refresh_timer.start(5000)
 
-        # Connect IPC event streaming
-        self.ipc.add_event_listener("job_progress", self._on_ipc_progress)
-        self.ipc.add_event_listener("job_completed", self._on_ipc_completed)
-        self.ipc.add_event_listener("sync_progress", self._on_sync_progress)
-        self.ipc.add_event_listener("sync_completed", self._on_sync_completed)
+        # Connect IPC event streaming. The client dispatches these from its
+        # socket-reader thread, so they go through the signals too.
+        self.ipc.add_event_listener("job_progress", self.job_progress_received.emit)
+        self.ipc.add_event_listener("job_completed", self.job_completed_received.emit)
+        self.ipc.add_event_listener("sync_progress", self.sync_progress_received.emit)
+        self.ipc.add_event_listener("sync_completed", self.sync_completed_received.emit)
 
     def _connect_signals(self):
         # Overview & Sync signals
@@ -390,6 +425,11 @@ class MainWindow(QMainWindow):
         self._refresh_storage()
 
     def _on_speed_profile_saved(self, profile_id: str):
+        # Guarded because refresh_all_data() pushes the stored value back into
+        # the settings view on every tick; a no-op write here would still cost a
+        # SQLite round-trip and a log line every few seconds.
+        if self.db.get_setting("speed_profile") == profile_id:
+            return
         self.db.set_setting("speed_profile", profile_id)
         logger.info(f"Speed profile updated to: {profile_id}")
 

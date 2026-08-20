@@ -183,6 +183,9 @@ class SettingsView(QWidget):
 
         # Slider (0: Eco, 1: Balanced, 2: Fast, 3: Turbo, 4: Extreme)
         self.speed_profiles_list = list_speed_profiles()
+        # Set while the UI is being synchronised *from* stored state, so the
+        # resulting valueChanged does not read as a user edit.
+        self._applying_speed_profile = False
         self.speed_slider = QSlider(Qt.Horizontal)
         self.speed_slider.setRange(0, len(self.speed_profiles_list) - 1)
         self.speed_slider.setValue(3)  # default: Turbo
@@ -397,22 +400,38 @@ class SettingsView(QWidget):
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
 
+    def _render_speed_profile(self, index: int) -> None:
+        """Update the profile card text to match the slider position."""
+        p = self.speed_profiles_list[index]
+        self.speed_title_lbl.setText(f"<b>{p.label}</b> — {p.transfers} Parallel Streams")
+        self.speed_desc_lbl.setText(p.description)
+        concurrency = max(p.transfers // 2, 4)
+        self.speed_metrics_lbl.setText(
+            f"Streams: {p.transfers} | Checkers: {p.checkers} | Buffer: {p.buffer_size} | Chunk: {p.chunk_size} | Upload Concurrency: {concurrency}"
+        )
+
     def _on_speed_slider_changed(self, index: int):
-        if 0 <= index < len(self.speed_profiles_list):
-            p = self.speed_profiles_list[index]
-            self.speed_title_lbl.setText(f"<b>{p.label}</b> — {p.transfers} Parallel Streams")
-            self.speed_desc_lbl.setText(p.description)
-            concurrency = max(p.transfers // 2, 4)
-            self.speed_metrics_lbl.setText(
-                f"Streams: {p.transfers} | Checkers: {p.checkers} | Buffer: {p.buffer_size} | Chunk: {p.chunk_size} | Upload Concurrency: {concurrency}"
-            )
-            self.speed_profile_saved.emit(p.id)
+        if not (0 <= index < len(self.speed_profiles_list)):
+            return
+        self._render_speed_profile(index)
+        # Only a real user interaction is a "save". set_speed_profile() runs on
+        # every dashboard refresh (a few seconds apart), and re-emitting from
+        # there meant the GUI rewrote the setting to SQLite and logged
+        # "Speed profile updated to: ..." continuously, all day, with nothing
+        # having changed.
+        if not self._applying_speed_profile:
+            self.speed_profile_saved.emit(self.speed_profiles_list[index].id)
 
     def set_speed_profile(self, profile_id: str):
+        """Reflect the persisted profile in the UI without re-saving it."""
         for i, p in enumerate(self.speed_profiles_list):
             if p.id == profile_id:
-                self.speed_slider.setValue(i)
-                self._on_speed_slider_changed(i)
+                self._applying_speed_profile = True
+                try:
+                    self.speed_slider.setValue(i)
+                    self._render_speed_profile(i)
+                finally:
+                    self._applying_speed_profile = False
                 break
 
     def _check_for_updates(self):
