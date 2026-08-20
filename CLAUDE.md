@@ -44,7 +44,7 @@ R2SYNC_TEST_RCLONE=/path/to/rclone QT_QPA_PLATFORM=offscreen pytest -q
 R2SYNC_REQUIRE_FULL_SUITE=1 QT_QPA_PLATFORM=offscreen pytest -v -rs
 ```
 
-Expect **162 passed, 1 skipped** on Linux with rclone present. The one skip is
+Expect **163 passed, 1 skipped** on Linux with rclone present. The one skip is
 `test_service_restore.py::…` — a Windows-registry test that runs on the Windows
 CI leg.
 
@@ -120,6 +120,20 @@ which makes the updater offer users the build they are already running.
 
 ## Things that bite
 
+- **rclone spells Windows paths its own way.** Its local backend reports every
+  absolute Windows path with the extended-length prefix and forward slashes
+  (`//?/C:/Users/me/Docs`), while a dataset stores what the folder picker gave
+  it (`C:\Users\me\Docs`). Comparing the two literally matched neither side of
+  a transfer, so `_transfer_direction` fell through to "sync" and *every* sync
+  on Windows -- the platform this ships to -- mislabelled its direction.
+  `_canonical_fs_path` in `rclone_engine.py` normalises both. It went unnoticed
+  because the end-to-end suite had never once run on Windows.
+- **bisync names its state files after both paths joined together**, flattened
+  into a single filename (`<path1>..<path2>`, separators as `_`). Windows caps
+  a filename at 255 characters, and two long paths overrun it -- rclone then
+  reports "syntax error detected in your path(s)", which is misleading, because
+  nothing is wrong with the paths. `tests/test_sync_e2e.py` keeps its two
+  synced trees under a short `mkdtemp` root for exactly this reason.
 - **rclone's bisync output needs precise matching.** It prints a *generic*
   footer (`Bisync aborted. Must run --resync to recover.`) after every critical
   error and every interruption. Matching the bare `must run --resync` substring

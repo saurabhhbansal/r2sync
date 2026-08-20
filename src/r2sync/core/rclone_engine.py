@@ -299,6 +299,26 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _LOCK_MARKER = "prior lock file found"
 
 
+# rclone's local backend renders every absolute Windows path with the
+# extended-length prefix and forward slashes -- "//?/C:/Users/me/Docs" -- while
+# a dataset stores what the folder picker gave it, "C:\\Users\\me\\Docs".
+_EXTENDED_PATH_RE = re.compile(r"^[\\/]{2}\?[\\/](UNC[\\/])?", re.IGNORECASE)
+
+
+def _canonical_fs_path(path: str) -> str:
+    r"""Spell a path one way so two renderings of a folder can be compared.
+
+    Only paths actually carrying the ``\\?\`` prefix are rewritten, so POSIX
+    paths -- where a backslash is a legal filename character -- are left alone.
+    """
+    match = _EXTENDED_PATH_RE.match(path)
+    if match:
+        path = path[match.end():].replace("/", "\\")
+        if match.group(1):  # \\?\UNC\server\share -> \\server\share
+            path = "\\\\" + path
+    return os.path.normcase(os.path.normpath(path))
+
+
 def _is_same_fs(fs_label: str, local_path: str) -> bool:
     """True when an rclone Fs label refers to the dataset's local folder.
 
@@ -306,13 +326,16 @@ def _is_same_fs(fs_label: str, local_path: str) -> bool:
     backend description (``S3 bucket my-bucket path data``), so identifying the
     *local* side is the reliable test -- matching on a remote name prefix is
     not, because the label does not contain the configured remote name.
+
+    The two sides do not arrive spelled alike on Windows: rclone answers with
+    the extended-length form, so a plain comparison matched neither side of a
+    transfer and every sync on the platform r2sync actually ships to reported
+    its direction as "sync". See :func:`_canonical_fs_path`.
     """
     if not fs_label or not local_path:
         return False
     try:
-        return os.path.normcase(os.path.normpath(fs_label)) == os.path.normcase(
-            os.path.normpath(local_path)
-        )
+        return _canonical_fs_path(fs_label) == _canonical_fs_path(local_path)
     except (TypeError, ValueError):
         return False
 

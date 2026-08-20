@@ -241,6 +241,32 @@ def test_transfer_direction_tolerates_path_spelling_differences():
     assert not _is_same_fs("/home/u/Other", "/home/u/Docs")
 
 
+def test_transfer_direction_survives_rclones_windows_path_spelling():
+    """The Windows leg reported every download as "sync" until this held.
+
+    rclone's local backend renders an absolute Windows path with the
+    extended-length prefix and forward slashes, while the dataset holds the
+    path the folder picker produced. Comparing them literally matched neither
+    side of a transfer. Asserted on every platform, not just Windows, because
+    the spelling is rclone's and arrives the same way wherever it is parsed.
+    """
+    from r2sync.core.rclone_engine import _is_same_fs
+
+    local = r"C:\Users\me\Docs"
+    assert _is_same_fs("//?/C:/Users/me/Docs", local)
+    assert _is_same_fs(r"\\?\C:\Users\me\Docs", local)
+    assert not _is_same_fs("//?/C:/Users/me/Other", local)
+
+    unc = r"\\server\share\Docs"
+    assert _is_same_fs("//?/UNC/server/share/Docs", unc)
+
+    remote = "S3 bucket my-bucket path r2sync/v1/datasets/ds/data"
+    assert _transfer_direction([{"srcFs": remote, "dstFs": "//?/C:/Users/me/Docs"}],
+                               local) == "download"
+    assert _transfer_direction([{"srcFs": "//?/C:/Users/me/Docs", "dstFs": remote}],
+                               local) == "upload"
+
+
 # ---------------------------------------------------------------------------
 # Mass deletion protection
 # ---------------------------------------------------------------------------
