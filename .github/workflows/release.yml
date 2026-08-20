@@ -13,6 +13,7 @@ jobs:
   release-windows:
     name: Build & Publish Windows Installer
     runs-on: windows-latest
+    timeout-minutes: 45
 
     permissions:
       contents: write
