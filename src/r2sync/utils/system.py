@@ -44,7 +44,7 @@ def set_windows_autostart(app_name: str, app_path: str, enable: bool = True) -> 
         key = winreg.HKEY_CURRENT_USER
         sub_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
         
-        with winreg.OpenKey(key, sub_key, 0, winreg.KEY_ALL_ACCESS) as reg_key:
+        with winreg.CreateKeyEx(key, sub_key, 0, winreg.KEY_ALL_ACCESS) as reg_key:
             if enable:
                 winreg.SetValueEx(reg_key, app_name, 0, winreg.REG_SZ, f'"{app_path}" --minimized')
             else:
@@ -118,7 +118,7 @@ def set_windows_service_autostart(enable: bool = True) -> bool:
     try:
         import winreg
 
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_ALL_ACCESS) as reg_key:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_ALL_ACCESS) as reg_key:
             if enable:
                 winreg.SetValueEx(
                     reg_key,
