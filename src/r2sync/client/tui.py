@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from r2sync.client.ipc_client import IPCClient
 from r2sync.config import APP_VERSION, SETTING_SPEED_PROFILE
-from r2sync.core.database import Database
+from r2sync.core.db import Database
 from r2sync.core.speed_profiles import SPEED_PROFILES, get_speed_profile, list_speed_profiles
 from r2sync.core.updater import AutoUpdater
 
@@ -346,22 +346,22 @@ class R2SyncTUI:
             self.ipc.run_job_now(job_id)
         else:
             from r2sync.core.backup_engine import BackupEngine
-            from r2sync.core.credentials import get_r2_credentials
             be = BackupEngine(self.db)
             job = self.db.get_job(job_id)
             if job:
-                import threading
-                threading.Thread(target=lambda: be.run_job_sync(job, get_r2_credentials()), daemon=True).start()
+                # trigger_job_async owns the worker thread and the
+                # one-run-per-job guard.
+                be.trigger_job_async(job)
 
     def _run_sync_action(self, dataset_id: str):
         if self.ipc.is_service_running():
             self.ipc.sync_dataset_now(dataset_id)
         else:
             from r2sync.core.sync_engine import SyncEngine
-            from r2sync.core.credentials import get_r2_credentials
-            se = SyncEngine(self.db)
-            import threading
-            threading.Thread(target=lambda: se.run_dataset_sync(dataset_id, get_r2_credentials()), daemon=True).start()
+
+            # trigger_sync_async already owns the worker thread and the
+            # one-sync-per-dataset guard.
+            SyncEngine(self.db).trigger_sync_async(dataset_id)
 
     def _check_update(self):
         try:

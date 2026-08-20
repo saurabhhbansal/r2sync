@@ -200,6 +200,20 @@ class TransferProgressEvent:
     total_files: int = 0
     errors_count: int = 0
 
+    # --- Progress phase reporting -------------------------------------
+    # ``phase`` is one of "scanning" (rclone is still enumerating, so the
+    # totals below are only what has been *discovered* so far), "transferring"
+    # (the transfer queue is complete, so totals are final) or "finalizing".
+    # ``totals_final`` says whether ``total_bytes``/``total_files`` may still
+    # grow, which is what lets the UI choose between showing
+    # "Transferred / Total" and "Scanned / Discovered".
+    phase: str = "scanning"
+    totals_final: bool = False
+    checks_done: int = 0
+    total_checks: int = 0
+    estimated_total_bytes: int = 0
+    estimated_total_files: int = 0
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -362,6 +376,21 @@ class SyncProgressEvent:
     errors_count: int = 0
     conflicts_count: int = 0
     message: Optional[str] = None
+
+    # --- Progress phase reporting -------------------------------------
+    # ``phase`` is one of "scanning" (rclone is still enumerating, so the
+    # totals below are only what has been *discovered* so far), "transferring"
+    # (the transfer queue is complete, so totals are final) or "finalizing".
+    # ``totals_final`` says whether ``total_bytes``/``total_files`` may still
+    # grow, which is what lets the UI choose between showing
+    # "Transferred / Total" and "Scanned / Discovered".
+    phase: str = "scanning"
+    totals_final: bool = False
+    checks_done: int = 0
+    total_checks: int = 0
+    estimated_total_bytes: int = 0
+    estimated_total_files: int = 0
+    direction: str = "sync"  # "upload", "download" or "sync"
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

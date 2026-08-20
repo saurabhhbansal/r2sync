@@ -1,7 +1,9 @@
 """Main Window and Application Controller for r2sync GUI matching Stitch Design."""
 
 import logging
+import os
 import sys
+import time
 from typing import Optional
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
@@ -76,7 +78,17 @@ class MainWindow(QMainWindow):
             self.refresh_all_data()
 
     def _setup_engine(self):
-        """Setup internal execution engines and scheduler when running in desktop mode."""
+        """Prefer the background service; only run in-process engines if it will not start.
+
+        Synchronization must survive the GUI being closed and the machine being
+        rebooted, so the window's first move is to make sure the daemon is up
+        and registered for autostart. The in-process scheduler and watchers are
+        a fallback for when that is impossible, and they last only as long as
+        this window does.
+        """
+        if not self.ipc.is_service_running() and not os.environ.get("R2SYNC_NO_AUTO_SERVICE"):
+            self._try_start_background_service()
+
         if not self.ipc.is_service_running():
             logger.info("Initializing integrated desktop scheduler and sync watchers...")
             from r2sync.notifications.notifier import NotificationManager
@@ -123,6 +135,29 @@ class MainWindow(QMainWindow):
 
             # Start realtime file watchers
             self.internal_sync_engine.start_all_watchers()
+
+    def _try_start_background_service(self) -> bool:
+        """Bring up the detached daemon so sync keeps running without this window."""
+        from r2sync.utils.system import launch_background_service, set_windows_service_autostart
+
+        try:
+            if not launch_background_service():
+                return False
+            set_windows_service_autostart(True)
+        except Exception as e:
+            logger.warning(f"Could not auto-start the background service: {e}")
+            return False
+
+        # Give the daemon a moment to bind its IPC port before deciding.
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            if self.ipc.is_service_running():
+                logger.info("Background service is up; the GUI will drive it over IPC.")
+                return True
+            time.sleep(0.25)
+
+        logger.info("Background service did not come up in time; using in-process engines.")
+        return False
 
     def _on_heartbeat_tick(self):
         datasets = self.db.list_sync_datasets()
@@ -324,32 +359,21 @@ class MainWindow(QMainWindow):
         self.view_settings.test_connection_requested.connect(self._on_test_connection)
 
     def _on_start_background_service(self):
-        try:
-            import subprocess
-            from pathlib import Path
+        """Start the 24/7 daemon and register it to come back after a reboot."""
+        from r2sync.utils.system import launch_background_service, set_windows_service_autostart
 
-            exe_dir = Path(sys.executable).parent
-            service_exe = exe_dir / ("r2sync-service.exe" if sys.platform == "win32" else "r2sync-service")
-
-            if service_exe.exists():
-                cmd = [str(service_exe), "--standalone"]
-            else:
-                cmd = [sys.executable, "-m", "r2sync.service.main", "--standalone"]
-
-            creation_flags = 0
-            if sys.platform == "win32":
-                creation_flags = subprocess.CREATE_NO_WINDOW
-
-            subprocess.Popen(
-                cmd,
-                creationflags=creation_flags,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                stdin=subprocess.DEVNULL,
-            )
+        if launch_background_service():
+            # Without this the daemon would die with the next Windows restart
+            # and the user would have to click Sync by hand again.
+            set_windows_service_autostart(True)
             QTimer.singleShot(1500, self.refresh_all_data)
-        except Exception as e:
-            logger.error(f"Failed to start background service: {e}")
+        else:
+            QMessageBox.warning(
+                self,
+                "Could Not Start Service",
+                "r2sync could not launch its background service. "
+                "Synchronization will only run while this window is open.",
+            )
 
     # -------------------------------------------------------------
     # Event Handlers & Data Loading
@@ -630,11 +654,20 @@ class MainWindow(QMainWindow):
 
     def _on_sync_progress(self, event_data: dict):
         self.view_overview.live_progress.update_progress(event_data)
-        pct = int(event_data.get("percentage", 0))
-        self.tray.set_syncing(True, f"Syncing ({pct}%)")
+
+        # A percentage is only meaningful once rclone has finished discovering
+        # what it will transfer; before that the tray says what it is doing.
+        if event_data.get("totals_final") and event_data.get("total_bytes"):
+            pct = int(event_data.get("percentage", 0))
+            direction = event_data.get("direction", "sync")
+            verb = {"upload": "Uploading", "download": "Downloading"}.get(direction, "Syncing")
+            self.tray.set_syncing(True, f"{verb} ({pct}%)")
+        else:
+            self.tray.set_syncing(True, "Checking for changes...")
 
     def _on_sync_completed(self, data: dict):
         self.tray.set_syncing(False)
+        self.view_overview.live_progress.reset()
         self.refresh_all_data()
 
     def _open_add_sync_dialog(self):

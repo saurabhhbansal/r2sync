@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+import math
 import os
 import platform
 import re
@@ -24,6 +25,7 @@ from r2sync.config import (
     RCLONE_DEFAULT_CHECKERS,
     RCLONE_DEFAULT_TRANSFERS,
     RCLONE_VERSION,
+    SYNC_DEFAULT_MAX_DELETE_PERCENT,
     SYNC_PROTOCOL_VERSION,
     SYNC_R2_ROOT,
 )
@@ -43,7 +45,7 @@ from r2sync.core.models import (
     SyncStatus,
     TransferProgressEvent,
 )
-from r2sync.core.speed_profiles import get_speed_profile, SpeedProfile
+from r2sync.core.speed_profiles import build_transfer_flags, get_speed_profile, SpeedProfile
 from r2sync.utils.paths import (
     get_cache_dir,
     get_dataset_bisync_dir,
@@ -210,6 +212,121 @@ class RcloneBinaryManager:
             return f"Error: {e}"
 
 
+
+
+
+def compute_max_delete_percent(
+    threshold_files: int,
+    known_total_files: int,
+    default_percent: int = SYNC_DEFAULT_MAX_DELETE_PERCENT,
+) -> int:
+    """Translate r2sync's "max N deleted files" setting into bisync's percentage.
+
+    ``rclone bisync --max-delete`` takes a *percentage* of the tracked files,
+    not a count -- unlike ``rclone sync``, where the same flag is a count. r2sync
+    exposes the setting to users as a file count ("pause if more than 50 files
+    are deleted"), so passing it straight through meant "pause above 50%".
+
+    The practical consequence was worst on small folders: renaming the only file
+    in a dataset reads as 1 deletion out of 1 file, i.e. 100%, and bisync aborted
+    the run -- so a rename never propagated and the dataset sat in
+    "needs attention" until someone intervened.
+    """
+    threshold_files = max(0, int(threshold_files or 0))
+    if known_total_files <= 0:
+        # No baseline yet (first sync). Fall back to the configured percentage.
+        return max(1, min(100, int(default_percent)))
+    pct = math.ceil(threshold_files / known_total_files * 100)
+    return max(1, min(100, pct))
+
+
+def _is_same_fs(fs_label: str, local_path: str) -> bool:
+    """True when an rclone Fs label refers to the dataset's local folder.
+
+    rclone renders a local Fs as a bare filesystem path but a remote one as a
+    backend description (``S3 bucket my-bucket path data``), so identifying the
+    *local* side is the reliable test -- matching on a remote name prefix is
+    not, because the label does not contain the configured remote name.
+    """
+    if not fs_label or not local_path:
+        return False
+    try:
+        return os.path.normcase(os.path.normpath(fs_label)) == os.path.normcase(
+            os.path.normpath(local_path)
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _transfer_direction(transferring: List[Dict[str, Any]], local_path: str) -> str:
+    """Classify in-flight transfers as "upload", "download" or "sync".
+
+    Bisync moves data both ways within a single run, so the UI cannot assume a
+    direction; it is derived per stats tick from which side of each transfer is
+    the local folder.
+    """
+    if not transferring:
+        return "sync"
+
+    uploads = downloads = 0
+    for item in transferring:
+        src_is_local = _is_same_fs(str(item.get("srcFs") or ""), local_path)
+        dst_is_local = _is_same_fs(str(item.get("dstFs") or ""), local_path)
+        if src_is_local and not dst_is_local:
+            uploads += 1
+        elif dst_is_local and not src_is_local:
+            downloads += 1
+
+    if uploads and not downloads:
+        return "upload"
+    if downloads and not uploads:
+        return "download"
+    return "sync"
+
+
+class TransferPhaseTracker:
+    """Turns rclone's raw stats stream into a phase + "are the totals final?" answer.
+
+    rclone reports ``totalBytes``/``totalTransfers`` as *"discovered so far"* --
+    both keep climbing while it is still walking the trees, and they even dip
+    slightly as in-flight items settle. Rendering that as the denominator of a
+    progress bar is what made the old UI show a total the user could not trust.
+
+    r2sync runs rclone with ``--check-first``, which forces the whole check
+    phase to complete before any transfer starts. That gives one unambiguous
+    signal: the moment the first transfer appears, the queue is fully built and
+    the totals are final. Until then the caller should present the numbers as
+    "Scanned / Discovered" rather than "Transferred / Total".
+    """
+
+    PHASE_SCANNING = "scanning"
+    PHASE_TRANSFERRING = "transferring"
+    PHASE_FINALIZING = "finalizing"
+
+    def __init__(self) -> None:
+        self.totals_final = False
+        self.peak_total_bytes = 0
+        self.peak_total_files = 0
+
+    def observe(self, st: Dict[str, Any]) -> Tuple[str, bool, int, int]:
+        """Return (phase, totals_final, total_bytes, total_files) for a stats block."""
+        transfers = st.get("transfers", 0) or 0
+        transferring = st.get("transferring") or []
+        bytes_done = st.get("bytes", 0) or 0
+
+        if not self.totals_final and (transfers > 0 or transferring or bytes_done > 0):
+            # --check-first guarantees checking finished before this point.
+            self.totals_final = True
+
+        # Totals jitter downwards as transfers settle; keep the high-water mark
+        # so the denominator never appears to shrink under the user.
+        self.peak_total_bytes = max(self.peak_total_bytes, st.get("totalBytes", 0) or 0)
+        self.peak_total_files = max(self.peak_total_files, st.get("totalTransfers", 0) or 0)
+
+        phase = self.PHASE_TRANSFERRING if self.totals_final else self.PHASE_SCANNING
+        return phase, self.totals_final, self.peak_total_bytes, self.peak_total_files
+
+
 class RcloneEngine:
     """High-performance execution engine for Rclone operations with Cloudflare R2."""
 
@@ -292,18 +409,10 @@ class RcloneEngine:
             "--stats", "1s",
             "--stats-log-level", "NOTICE",
             "--fast-list",
-            "--buffer-size", prof.buffer_size,
-            "--s3-chunk-size", prof.chunk_size,
-            "--s3-upload-cutoff", prof.chunk_size,
-            "--s3-copy-cutoff", prof.chunk_size,
-            "--s3-upload-concurrency", str(max(prof.transfers // 2, 4)),
-            "--transfers", str(prof.transfers),
-            "--checkers", str(prof.checkers),
-            "--s3-no-check-bucket",
-            "--s3-disable-checksum",
-            "--retries", "3",
-            "--low-level-retries", "10",
-        ]
+            # Complete the check phase before transferring so the reported
+            # totals are final rather than "discovered so far".
+            "--check-first",
+        ] + build_transfer_flags(prof)
 
         if job.delete_excluded and cmd_action == "sync":
             args.append("--delete-excluded")
@@ -319,13 +428,14 @@ class RcloneEngine:
             if pattern.strip():
                 args.extend(["--include", pattern.strip()])
 
-        today_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        today_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         log_file_path = get_logs_dir() / f"run_{job.id or 0}_{today_str}.log"
         run_record.log_file_path = str(log_file_path)
         run_record.status = RunStatus.RUNNING.value
         start_time = time.time()
 
         log_lines: List[str] = []
+        phase_tracker = TransferPhaseTracker()
 
         try:
             kwargs: Dict[str, Any] = {
@@ -380,6 +490,9 @@ class RcloneEngine:
                             errors = st.get("errors", 0)
                             deletes = st.get("deletes", 0)
 
+                            phase, totals_final, total_bytes, total_transfers = (
+                                phase_tracker.observe(st)
+                            )
                             pct = (bytes_done / total_bytes * 100.0) if total_bytes > 0 else 0.0
                             transferring_list = st.get("transferring", [])
                             curr_file = transferring_list[0].get("name") if transferring_list else None
@@ -396,6 +509,10 @@ class RcloneEngine:
                                 files_transferred=transfers,
                                 total_files=total_transfers,
                                 errors_count=errors,
+                                phase=phase,
+                                totals_final=totals_final,
+                                checks_done=st.get("checks", 0),
+                                total_checks=st.get("totalChecks", 0),
                             )
 
                             run_record.bytes_transferred = bytes_done
@@ -612,8 +729,15 @@ class RcloneEngine:
         log_cb: Optional[Callable[[str], None]] = None,
         creds: Optional[R2Credentials] = None,
         speed_profile: Optional[str] = None,
+        estimate: Optional[Any] = None,
+        force: bool = False,
     ) -> Dict[str, Any]:
-        """Execute bidirectional synchronization between local path and R2 dataset namespace."""
+        """Execute bidirectional synchronization between local path and R2 dataset namespace.
+
+        ``estimate`` is an optional :class:`~r2sync.core.prescan.DatasetEstimate`
+        carrying independently measured dataset totals. It is only forwarded to
+        progress listeners for display and never gates the transfer.
+        """
         exe_path = RcloneBinaryManager.get_executable_path()
         env = self._build_env(creds)
         prof = get_speed_profile(speed_profile)
@@ -636,20 +760,12 @@ class RcloneEngine:
             "--stats", "1s",
             "--stats-log-level", "NOTICE",
             "--fast-list",
-            "--buffer-size", prof.buffer_size,
-            "--s3-chunk-size", prof.chunk_size,
-            "--s3-upload-cutoff", prof.chunk_size,
-            "--s3-copy-cutoff", prof.chunk_size,
-            "--s3-upload-concurrency", str(max(prof.transfers // 2, 4)),
-            "--transfers", str(prof.transfers),
-            "--checkers", str(prof.checkers),
-            "--s3-no-check-bucket",
-            "--s3-disable-checksum",
-            "--retries", "3",
-            "--low-level-retries", "10",
+            # Complete the check phase before transferring so the reported
+            # totals are final rather than "discovered so far".
+            "--check-first",
             "--backup-dir1", recovery_dir,
             "--no-cleanup",
-        ]
+        ] + build_transfer_flags(prof)
 
         if force_resync or resync_mode or not dataset.initial_sync_done:
             mode = resync_mode or "path1"
@@ -657,9 +773,16 @@ class RcloneEngine:
         else:
             args.extend(["--recover", "--resilient"])
 
-        # Mass deletion threshold safety
-        max_del = dataset.max_delete_threshold or 50
-        args.extend(["--max-delete", str(max_del)])
+        # Mass deletion threshold safety, expressed the way bisync wants it.
+        max_del_pct = compute_max_delete_percent(
+            dataset.max_delete_threshold or 50, dataset.total_files
+        )
+        args.extend(["--max-delete", str(max_del_pct)])
+
+        # --force waives bisync's "everything changed" guard only; the deletion
+        # ceiling above still applies, so mass-deletion protection is intact.
+        if force:
+            args.append("--force")
 
         if dataset.bandwidth_limit:
             args.extend(["--bwlimit", dataset.bandwidth_limit])
@@ -670,7 +793,9 @@ class RcloneEngine:
             if pat.strip():
                 args.extend(["--exclude", pat.strip()])
 
-        today_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Millisecond precision: a retry that starts within the same second as
+        # the run it is retrying must not overwrite that run's log.
+        today_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         log_file_path = get_logs_dir() / f"sync_{dataset.dataset_id[:8]}_{today_str}.log"
         start_time = time.time()
 
@@ -688,9 +813,17 @@ class RcloneEngine:
             "mass_deletion_triggered": False,
             "error_message": None,
             "log_file_path": str(log_file_path),
+            "totals_final": False,
+            "all_changed_abort": False,
+            "needs_resync": False,
+            "empty_source_abort": False,
+            "forced": force,
         }
 
         log_lines: List[str] = []
+        phase_tracker = TransferPhaseTracker()
+        estimated_bytes = int(estimate.union_bytes) if estimate else 0
+        estimated_files = int(estimate.union_files) if estimate else 0
 
         try:
             kwargs: Dict[str, Any] = {
@@ -736,6 +869,42 @@ class RcloneEngine:
                     if "safety check" in line_clean.lower() or "--max-delete" in line_clean.lower() or "too many deletes" in line_clean.lower():
                         result_stats["mass_deletion_triggered"] = True
 
+                    # bisync refuses to proceed when *every* tracked file
+                    # changed on one side. On a small dataset that is ordinary
+                    # user behaviour (editing all three of your files), so the
+                    # caller retries once with --force rather than leaving the
+                    # dataset permanently stuck.
+                    if "all files were changed" in line_clean.lower():
+                        result_stats["all_changed_abort"] = True
+
+                    low = line_clean.lower()
+
+                    # The saved baseline in the workdir is missing or empty, so
+                    # no incremental run can ever succeed from here. There is no
+                    # user data encoded in an empty baseline, so rebuilding it
+                    # is safe -- and without it a dataset that happened to be
+                    # empty when it was set up stays broken forever.
+                    if (
+                        "must run --resync" in low
+                        or "empty prior path1 listing" in low
+                        or "empty prior path2 listing" in low
+                        or "cannot find prior path1 or path2 listings" in low
+                    ):
+                        result_stats["needs_resync"] = True
+
+                    # Distinct and deliberately NOT auto-recovered: the live
+                    # folder is empty right now. rclone guards this because an
+                    # unmounted drive looks exactly like "the user deleted
+                    # everything", and re-baselining would either resurrect
+                    # intentional deletions or propagate a bogus wipe. Surface
+                    # it for a human decision instead.
+                    if (
+                        "empty current path1 listing" in low
+                        or "empty current path2 listing" in low
+                        or "cannot sync to an empty directory" in low
+                    ):
+                        result_stats["empty_source_abort"] = True
+
                     try:
                         data = json.loads(line_clean)
                         msg = data.get("msg", "")
@@ -752,6 +921,9 @@ class RcloneEngine:
                             errors = st.get("errors", 0)
                             deletes = st.get("deletes", 0)
 
+                            phase, totals_final, total_bytes, total_transfers = (
+                                phase_tracker.observe(st)
+                            )
                             pct = (bytes_done / total_bytes * 100.0) if total_bytes > 0 else 0.0
                             transferring_list = st.get("transferring", [])
                             curr_file = transferring_list[0].get("name") if transferring_list else None
@@ -769,6 +941,13 @@ class RcloneEngine:
                                 total_files=total_transfers,
                                 errors_count=errors,
                                 conflicts_count=len(result_stats["conflicts_detected"]),
+                                phase=phase,
+                                totals_final=totals_final,
+                                checks_done=st.get("checks", 0),
+                                total_checks=st.get("totalChecks", 0),
+                                estimated_total_bytes=estimated_bytes,
+                                estimated_total_files=estimated_files,
+                                direction=_transfer_direction(transferring_list, local_path),
                             )
 
                             result_stats["bytes_transferred"] = bytes_done
@@ -790,12 +969,49 @@ class RcloneEngine:
 
             result_stats["duration_seconds"] = round(duration, 2)
             result_stats["exit_code"] = exit_code
+            result_stats["totals_final"] = True
+
+            # Settle the UI on a final, unambiguous total.
+            if progress_cb:
+                try:
+                    progress_cb(SyncProgressEvent(
+                        dataset_id=dataset.dataset_id,
+                        status=SyncStatus.SYNCING.value,
+                        percentage=100.0 if exit_code == 0 else 0.0,
+                        bytes_transferred=result_stats["bytes_transferred"],
+                        total_bytes=result_stats["total_bytes"],
+                        files_transferred=result_stats["files_transferred"],
+                        total_files=result_stats["total_files"],
+                        errors_count=result_stats["errors_count"],
+                        phase=TransferPhaseTracker.PHASE_FINALIZING,
+                        totals_final=True,
+                        estimated_total_bytes=estimated_bytes,
+                        estimated_total_files=estimated_files,
+                    ))
+                except Exception as cb_err:
+                    logger.debug(f"Final progress callback error: {cb_err}")
 
             if exit_code == 0:
                 result_stats["success"] = True
             elif result_stats["mass_deletion_triggered"]:
                 result_stats["success"] = False
                 result_stats["error_message"] = "Sync paused: Deletion safety threshold exceeded to protect your files."
+            elif result_stats["empty_source_abort"]:
+                result_stats["success"] = False
+                result_stats["error_message"] = (
+                    "Sync paused: the folder on one side is now completely empty. "
+                    "Confirm this was intentional, then re-sync to apply it."
+                )
+            elif result_stats["needs_resync"]:
+                result_stats["success"] = False
+                result_stats["error_message"] = (
+                    "Bisync state is stale and must be rebuilt (re-baseline required)."
+                )
+            elif result_stats["all_changed_abort"]:
+                result_stats["success"] = False
+                result_stats["error_message"] = (
+                    "Bisync stopped because every tracked file changed on this computer."
+                )
             elif exit_code == -15 or exit_code == 1:
                 if len(result_stats["conflicts_detected"]) > 0:
                     result_stats["error_message"] = "Conflicts detected during synchronization."

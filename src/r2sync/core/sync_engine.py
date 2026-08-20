@@ -3,19 +3,23 @@
 import logging
 import os
 import shutil
+import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from r2sync.config import (
     CLOUDFLARE_PRICING_INFO_URL,
     CLOUDFLARE_R2_STORAGE_PRICE_PER_GB_MONTH,
+    SYNC_MAX_CONCURRENT_DATASETS,
     SYNC_PROTOCOL_VERSION,
     SYNC_R2_ROOT,
 )
 from r2sync.core.credentials import get_r2_credentials
+from r2sync.core.prescan import BackgroundEstimator, scan_local_tree
 from r2sync.core.db import Database
 from r2sync.core.models import (
     ConflictResolution,
@@ -83,9 +87,21 @@ class SyncEngine:
         )
 
         self._active_syncs: Dict[str, Dict[str, Any]] = {}
+        # Datasets that changed while their sync was already in flight. Without
+        # this, a file created during a running sync was simply dropped: the
+        # debounced watcher event hit the "already syncing" guard and nothing
+        # ever re-queued it.
+        self._pending_syncs: Dict[str, Dict[str, Any]] = {}
+        # Datasets that could not sync right now (offline) and must be
+        # retried by the scheduler once conditions allow.
+        self._deferred_syncs: Set[str] = set()
+        # Datasets whose in-flight sync the user cancelled; suppresses the
+        # automatic retry and follow-up paths for that run.
+        self._cancel_requested: Set[str] = set()
+        self.max_concurrent_syncs = max(1, SYNC_MAX_CONCURRENT_DATASETS)
         self._progress_listeners: List[Callable[[SyncProgressEvent], None]] = []
         self._completion_listeners: List[Callable[[SyncDataset, Dict[str, Any]], None]] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def add_progress_listener(self, listener: Callable[[SyncProgressEvent], None]) -> None:
         with self._lock:
@@ -128,8 +144,22 @@ class SyncEngine:
             return dataset_id in self._active_syncs
 
     def cancel_sync(self, dataset_id: str) -> bool:
+        """Stop the running sync and make sure nothing immediately restarts it.
+
+        The retry and follow-up paths added for change coalescing would
+        otherwise relaunch the transfer the instant the process was killed,
+        making Cancel look like it did nothing.
+        """
         logger.info(f"Requested cancellation of sync dataset: {dataset_id}")
+        with self._lock:
+            self._cancel_requested.add(dataset_id)
+            self._pending_syncs.pop(dataset_id, None)
+            self._deferred_syncs.discard(dataset_id)
         return self.rclone_engine.cancel_bisync(dataset_id)
+
+    def is_cancel_requested(self, dataset_id: str) -> bool:
+        with self._lock:
+            return dataset_id in self._cancel_requested
 
     def check_folder_overlap(self, candidate_path: str, exclude_dataset_id: Optional[str] = None) -> List[str]:
         """Check if candidate_path overlaps with existing backup jobs or sync datasets."""
@@ -151,13 +181,35 @@ class SyncEngine:
 
         return overlapping
 
-    def start_all_watchers(self) -> None:
-        """Start real-time filesystem watchers for all enabled, active datasets."""
-        datasets = self.db.list_sync_datasets()
-        for d in datasets:
-            if d.enabled and not d.paused and d.schedule_mode == SyncScheduleMode.REALTIME.value:
-                if os.path.exists(d.local_path):
-                    self.watcher_manager.start_watching(d.dataset_id, d.local_path, d.exclude_patterns)
+    @staticmethod
+    def dataset_wants_watcher(dataset: SyncDataset) -> bool:
+        """True when this dataset should have a live filesystem watcher attached."""
+        return bool(
+            dataset.enabled
+            and not dataset.paused
+            and dataset.schedule_mode == SyncScheduleMode.REALTIME.value
+        )
+
+    def start_all_watchers(self) -> int:
+        """Attach real-time watchers to every enabled, unpaused realtime dataset.
+
+        Registration happens even when the folder is not present yet (an
+        unmounted network or removable drive right after boot): the watcher
+        manager keeps the registration and its supervisor attaches as soon as
+        the path appears.
+        """
+        started = 0
+        for d in self.db.list_sync_datasets():
+            if not self.dataset_wants_watcher(d):
+                continue
+            if self.watcher_manager.start_watching(d.dataset_id, d.local_path, d.exclude_patterns):
+                started += 1
+            else:
+                logger.warning(
+                    f"Watcher for dataset '{d.name}' is pending: {d.local_path} is not available yet."
+                )
+        logger.info(f"Started {started} real-time watcher(s).")
+        return started
 
     def stop_all_watchers(self) -> None:
         self.watcher_manager.stop_all()
@@ -288,12 +340,41 @@ class SyncEngine:
         dataset_id: str,
         resync_mode: Optional[str] = None,
         force_resync: bool = False,
-    ) -> None:
-        """Trigger synchronization of a dataset asynchronously in a background thread."""
+    ) -> bool:
+        """Queue a synchronization of a dataset on a background worker thread.
+
+        Exactly one sync per dataset runs at a time. A request that arrives
+        while a sync is already running is *coalesced into a follow-up run*
+        rather than discarded, so a file created mid-sync still reaches R2.
+
+        Returns True if a worker was started now, False if the request was
+        folded into the in-flight run or deferred behind the concurrency limit.
+        """
         with self._lock:
             if dataset_id in self._active_syncs:
-                logger.info(f"Sync for dataset {dataset_id} is already in progress.")
-                return
+                pending = self._pending_syncs.setdefault(
+                    dataset_id, {"resync_mode": None, "force_resync": False}
+                )
+                # A follow-up must be at least as strong as the strongest
+                # request that was folded into it.
+                pending["force_resync"] = pending["force_resync"] or force_resync
+                pending["resync_mode"] = pending["resync_mode"] or resync_mode
+                logger.info(
+                    f"Sync for dataset {dataset_id} already in progress; "
+                    "queued a follow-up run for the newer changes."
+                )
+                return False
+
+            if len(self._active_syncs) >= self.max_concurrent_syncs:
+                # Hold the dataset for the next scheduler tick instead of
+                # adding another rclone process to an already-saturated link.
+                self._deferred_syncs.add(dataset_id)
+                logger.info(
+                    f"Deferring sync for dataset {dataset_id}: "
+                    f"{len(self._active_syncs)} sync(s) already running."
+                )
+                return False
+
             self._active_syncs[dataset_id] = {"started_at": time.time()}
 
         thread = threading.Thread(
@@ -303,6 +384,32 @@ class SyncEngine:
             daemon=True,
         )
         thread.start()
+        return True
+
+    def has_pending_sync(self, dataset_id: str) -> bool:
+        """True when a follow-up run is queued behind the current sync."""
+        with self._lock:
+            return dataset_id in self._pending_syncs
+
+    def _finish_sync(self, dataset_id: str) -> None:
+        """Release the per-dataset slot and start any coalesced follow-up run."""
+        with self._lock:
+            self._active_syncs.pop(dataset_id, None)
+            pending = self._pending_syncs.pop(dataset_id, None)
+            cancelled = dataset_id in self._cancel_requested
+            self._cancel_requested.discard(dataset_id)
+
+        if cancelled:
+            logger.info(f"Sync for dataset {dataset_id} was cancelled; not re-queuing.")
+            return
+
+        if pending:
+            logger.info(f"Running coalesced follow-up sync for dataset {dataset_id}")
+            self.trigger_sync_async(
+                dataset_id,
+                resync_mode=pending.get("resync_mode"),
+                force_resync=bool(pending.get("force_resync")),
+            )
 
     def _run_sync_worker(
         self,
@@ -310,36 +417,63 @@ class SyncEngine:
         resync_mode: Optional[str] = None,
         force_resync: bool = False,
     ) -> None:
-        dataset = self.db.get_sync_dataset(dataset_id)
-        if not dataset:
-            with self._lock:
-                self._active_syncs.pop(dataset_id, None)
-            return
+        """Run one synchronization pass for a dataset.
 
+        The whole body is wrapped so the per-dataset slot in ``_active_syncs``
+        is always released. Previously an exception anywhere in here left the
+        dataset permanently marked "syncing", and every later watcher event or
+        scheduler tick for it was silently ignored for the lifetime of the
+        process.
+        """
+        dataset: Optional[SyncDataset] = None
+        result: Dict[str, Any] = {}
+        try:
+            dataset = self.db.get_sync_dataset(dataset_id)
+            if not dataset:
+                return
+            result = self._execute_sync(dataset, resync_mode, force_resync)
+        except Exception as e:
+            logger.error(f"Unhandled error syncing dataset {dataset_id}: {e}", exc_info=True)
+            result = {"success": False, "error_message": str(e)}
+            try:
+                self.db.update_sync_status(dataset_id, SyncStatus.ERROR.value, last_error=str(e))
+                self.db.add_activity("ERROR", "sync", f"Sync failed unexpectedly: {e}")
+            except Exception:
+                logger.debug("Could not persist sync failure state", exc_info=True)
+        finally:
+            self._finish_sync(dataset_id)
+
+        if dataset is not None:
+            self._broadcast_completion(dataset, result)
+
+    def _execute_sync(
+        self,
+        dataset: SyncDataset,
+        resync_mode: Optional[str],
+        force_resync: bool,
+    ) -> Dict[str, Any]:
+        dataset_id = dataset.dataset_id
         creds = get_r2_credentials()
 
         # Pre-check 1: Credentials
         if not creds or not creds.access_key_id or not creds.secret_access_key:
             self.db.update_sync_status(dataset_id, SyncStatus.ERROR.value, last_error="Missing R2 credentials")
             self.db.add_activity("ERROR", "sync", f"Sync failed for '{dataset.name}': Missing R2 credentials")
-            with self._lock:
-                self._active_syncs.pop(dataset_id, None)
-            return
+            return {"success": False, "error_message": "Missing R2 credentials"}
 
         # Pre-check 2: Local path
         if not os.path.exists(dataset.local_path):
             self.db.update_sync_status(dataset_id, SyncStatus.ERROR.value, last_error=f"Folder missing: {dataset.local_path}")
             self.db.add_activity("ERROR", "sync", f"Sync paused for '{dataset.name}': Local directory does not exist")
-            with self._lock:
-                self._active_syncs.pop(dataset_id, None)
-            return
+            return {"success": False, "error_message": f"Folder missing: {dataset.local_path}"}
 
-        # Pre-check 3: Internet Connection
+        # Pre-check 3: Internet Connection. The dataset stays marked dirty so
+        # the scheduler retries it as soon as the link comes back, instead of
+        # waiting for the next unrelated filesystem change.
         if not check_internet_connection():
             self.db.update_sync_status(dataset_id, SyncStatus.OFFLINE.value, last_error="Waiting for network connection...")
-            with self._lock:
-                self._active_syncs.pop(dataset_id, None)
-            return
+            self.mark_needs_sync(dataset_id)
+            return {"success": False, "offline": True, "error_message": "Waiting for network connection..."}
 
         # Pre-check 4: Rclone binary
         if not RcloneBinaryManager.is_installed():
@@ -347,9 +481,7 @@ class SyncEngine:
                 RcloneBinaryManager.download_and_install()
             except Exception as e:
                 self.db.update_sync_status(dataset_id, SyncStatus.ERROR.value, last_error=f"Rclone missing: {e}")
-                with self._lock:
-                    self._active_syncs.pop(dataset_id, None)
-                return
+                return {"success": False, "error_message": f"Rclone missing: {e}"}
 
         self.db.update_sync_status(dataset_id, SyncStatus.SYNCING.value)
         self.db.add_activity("INFO", "sync", f"Starting synchronization for '{dataset.name}'")
@@ -372,21 +504,87 @@ class SyncEngine:
         except Exception as e:
             logger.debug(f"Could not update remote metadata for {dataset_id}: {e}")
 
-        # Progress Callback
+        # Independent size estimate for the progress UI. It runs beside the
+        # transfer and is never awaited, so it cannot delay the first byte.
+        estimator = BackgroundEstimator(self.rclone_engine, dataset, creds).start()
+
         speed_prof = self.db.get_setting("speed_profile") or "turbo"
 
         def on_progress(p: SyncProgressEvent):
+            est = estimator.estimate
+            if est and not p.estimated_total_bytes:
+                p.estimated_total_bytes = est.union_bytes
+                p.estimated_total_files = est.union_files
             self._broadcast_progress(p)
 
-        # Execute Bisync
-        result = self.rclone_engine.run_bisync(
-            dataset=dataset,
-            resync_mode=resync_mode,
-            force_resync=force_resync,
-            progress_cb=on_progress,
-            creds=creds,
-            speed_profile=speed_prof,
-        )
+        try:
+            result = self.rclone_engine.run_bisync(
+                dataset=dataset,
+                resync_mode=resync_mode,
+                force_resync=force_resync,
+                progress_cb=on_progress,
+                creds=creds,
+                speed_profile=speed_prof,
+                estimate=estimator.estimate,
+            )
+
+            # A critical bisync abort leaves the workdir listings unusable, so
+            # every later incremental run would fail the same way. Rebuild the
+            # baseline once. "newer" is used rather than the default "path1"
+            # because recovery must not silently discard the other computer's
+            # work; --resync never deletes, so both sides survive.
+            if (
+                result.get("needs_resync")
+                and not (force_resync or resync_mode)
+                and not self.is_cancel_requested(dataset_id)
+            ):
+                logger.warning(
+                    f"Bisync state for '{dataset.name}' is stale; rebuilding the baseline."
+                )
+                self.db.add_activity(
+                    "WARNING", "sync",
+                    f"Rebuilding synchronization baseline for '{dataset.name}' "
+                    "(previous state was unusable).",
+                )
+                result = self.rclone_engine.run_bisync(
+                    dataset=dataset,
+                    resync_mode="newer",
+                    force_resync=True,
+                    progress_cb=on_progress,
+                    creds=creds,
+                    speed_profile=speed_prof,
+                    estimate=estimator.estimate,
+                )
+
+            # bisync aborts when 100% of the tracked files changed on one side.
+            # For a small folder that is just the user editing everything they
+            # have, so retry once with --force. The --max-delete ceiling is
+            # unaffected, so mass-deletion protection still applies.
+            if (
+                result.get("all_changed_abort")
+                and not result.get("mass_deletion_triggered")
+                and not self.is_cancel_requested(dataset_id)
+            ):
+                logger.warning(
+                    f"Bisync reported that every file changed in '{dataset.name}'; "
+                    "retrying once with --force."
+                )
+                self.db.add_activity(
+                    "WARNING", "sync",
+                    f"Every tracked file changed in '{dataset.name}'; retrying the sync.",
+                )
+                result = self.rclone_engine.run_bisync(
+                    dataset=dataset,
+                    resync_mode=resync_mode,
+                    force_resync=force_resync,
+                    progress_cb=on_progress,
+                    creds=creds,
+                    speed_profile=speed_prof,
+                    estimate=estimator.estimate,
+                    force=True,
+                )
+        finally:
+            estimator.stop()
 
         now_str = datetime.now().isoformat()
         current_dev.status = "online"
@@ -405,7 +603,6 @@ class SyncEngine:
         unresolved = self.db.count_unresolved_conflicts(dataset_id)
 
         if result.get("success"):
-            # Update local dataset state
             dataset.initial_sync_done = True
             final_status = SyncStatus.CONFLICT.value if unresolved > 0 else SyncStatus.SYNCED.value
 
@@ -418,9 +615,12 @@ class SyncEngine:
                 last_error=None,
                 total_files=cnt,
                 total_bytes=sz,
+                # Persisting this is what lets the next run be a fast
+                # incremental bisync. Without it every single sync re-ran with
+                # --resync, which is slower and never propagates deletions.
+                initial_sync_done=True,
             )
 
-            # Update dataset record in memory
             dataset.status = final_status
             dataset.last_sync_at = now_str
             dataset.total_files = cnt
@@ -443,9 +643,25 @@ class SyncEngine:
                     notification_type="success",
                 )
 
-            # Start watcher if realtime mode and not already running
-            if dataset.schedule_mode == SyncScheduleMode.REALTIME.value and not dataset.paused:
-                self.watcher_manager.start_watching(dataset_id, dataset.local_path, dataset.exclude_patterns)
+        elif result.get("empty_source_abort"):
+            # Not treated as a plain error: the folder may simply be an
+            # unmounted drive, and the user needs to decide before r2sync
+            # propagates "everything is gone" to their other computers.
+            self.db.update_sync_status(
+                dataset_id=dataset_id,
+                status=SyncStatus.NEEDS_ATTENTION.value,
+                last_error=result.get("error_message"),
+            )
+            dataset.status = SyncStatus.NEEDS_ATTENTION.value
+            self.db.add_activity(
+                "WARNING", "sync",
+                f"Sync paused for '{dataset.name}': one side of the folder is now empty.",
+            )
+            self.notifier.show_toast(
+                title=f"Sync Paused: {dataset.name}",
+                message="One side of this folder is now empty. Confirm before syncing.",
+                notification_type="warning",
+            )
 
         elif result.get("mass_deletion_triggered"):
             self.db.update_sync_status(
@@ -474,33 +690,47 @@ class SyncEngine:
                 notification_type="error",
             )
 
-        with self._lock:
-            self._active_syncs.pop(dataset_id, None)
+        # Re-attach the watcher without disturbing a debounce timer that may be
+        # holding a change the user made while this sync was running.
+        if self.dataset_wants_watcher(dataset):
+            self.watcher_manager.ensure_watching(
+                dataset_id, dataset.local_path, dataset.exclude_patterns
+            )
 
-        self._broadcast_completion(dataset, result)
+        return result
+
+    def mark_needs_sync(self, dataset_id: str) -> None:
+        """Remember that a dataset still has unsynced work.
+
+        Used when a sync cannot proceed right now (no network, or the service
+        just started) so the next scheduler tick picks it back up rather than
+        waiting for a new filesystem event that may never come.
+
+        This deliberately does *not* go through ``_pending_syncs``: that path
+        re-runs immediately when the current worker finishes, which for a
+        still-offline dataset would spin. The scheduler's tick provides the
+        backoff instead.
+        """
+        with self._lock:
+            self._deferred_syncs.add(dataset_id)
+
+    def take_deferred_syncs(self) -> List[str]:
+        """Pop and return dataset ids that were deferred (e.g. while offline)."""
+        with self._lock:
+            deferred = sorted(self._deferred_syncs)
+            self._deferred_syncs.clear()
+        return deferred
 
     def _calc_folder_stats(self, local_path: str, exclude_patterns: List[str]) -> Tuple[int, int]:
-        """Compute total non-excluded file count and total size in bytes."""
-        total_files = 0
-        total_bytes = 0
-        try:
-            for root, dirs, files in os.walk(local_path):
-                rel_root = os.path.relpath(root, local_path)
-                if rel_root != "." and (rel_root.startswith(".r2sync_trash") or rel_root.startswith(".git")):
-                    dirs[:] = []
-                    continue
-                for f in files:
-                    if f.startswith("~$") or f.endswith(".tmp") or f.endswith(".partial"):
-                        continue
-                    full_p = os.path.join(root, f)
-                    try:
-                        total_bytes += os.path.getsize(full_p)
-                        total_files += 1
-                    except OSError:
-                        pass
-        except Exception:
-            pass
-        return total_files, total_bytes
+        """Compute total non-excluded file count and total size in bytes.
+
+        Shares the pre-scan's walker so the count matches what actually gets
+        synchronized. This number also drives the deletion-safety percentage
+        handed to bisync, so counting excluded files here would loosen that
+        guard.
+        """
+        files, size, _complete = scan_local_tree(local_path, exclude_patterns)
+        return files, size
 
     def _scan_and_record_conflicts(self, dataset: SyncDataset) -> None:
         """Scan dataset folder for deterministic conflict files and record them in the database."""

@@ -64,6 +64,13 @@ SYNC_DEFAULT_DEBOUNCE_SECONDS = 2.5
 SYNC_DEFAULT_MAX_DELETE_THRESHOLD = 50  # Max files deleted before safety pause
 SYNC_DEFAULT_MAX_DELETE_PERCENT = 20    # Max percentage of dataset deleted before safety pause
 SYNC_DEFAULT_RECONCILE_INTERVAL_MINUTES = 30
+# Ceiling on datasets synchronizing at the same time. Each running sync is its
+# own rclone process with its own --transfers/--multi-thread-streams budget, so
+# letting every dataset start at once (as happens on service startup, when all
+# of them are queued for a catch-up reconcile) would oversubscribe the network
+# and the local disk. Datasets over the ceiling are deferred to the next
+# scheduler tick rather than dropped.
+SYNC_MAX_CONCURRENT_DATASETS = 2
 SYNC_DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60
 
 # Cloudflare R2 Pricing Reference (for UI visibility & estimation)

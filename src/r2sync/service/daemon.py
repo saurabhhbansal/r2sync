@@ -10,7 +10,7 @@ from typing import Optional
 
 from r2sync.core.backup_engine import BackupEngine
 from r2sync.core.db import Database
-from r2sync.core.models import SyncStatus
+from r2sync.core.models import SyncScheduleMode, SyncStatus
 from r2sync.core.rclone_engine import RcloneBinaryManager, RcloneEngine
 from r2sync.core.scheduler import JobScheduler
 from r2sync.core.sync_engine import SyncEngine
@@ -18,6 +18,7 @@ from r2sync.notifications.notifier import NotificationManager
 from r2sync.service.ipc_server import IPCServer
 from r2sync.utils.logging import setup_logger
 from r2sync.utils.paths import get_service_pid_path
+from r2sync.utils.system import set_windows_service_autostart
 
 logger = setup_logger(name="r2sync.service", file_prefix="service")
 
@@ -44,6 +45,7 @@ class ServiceDaemon:
             job_runner_cb=self._on_scheduler_trigger,
             sync_runner_cb=self._on_sync_trigger,
             heartbeat_cb=self._on_heartbeat_tick,
+            deferred_provider=self.sync_engine.take_deferred_syncs,
         )
         self.ipc_server = IPCServer(
             db=self.db,
@@ -89,6 +91,13 @@ class ServiceDaemon:
         logger.info("Initializing r2sync background service...")
         self._write_pid()
 
+        # Keep ourselves registered to start at logon. Doing it here (rather
+        # than only at install time) means an existing installation self-heals
+        # the moment the service runs once. Skipped under R2SYNC_NO_AUTO_SERVICE
+        # so a test run never writes to the developer's registry.
+        if sys.platform == "win32" and not os.environ.get("R2SYNC_NO_AUTO_SERVICE"):
+            set_windows_service_autostart(True)
+
         # Check Rclone binary
         if not RcloneBinaryManager.is_installed():
             logger.info("Rclone binary not detected. Attempting automatic download...")
@@ -101,14 +110,7 @@ class ServiceDaemon:
         self.scheduler.start()
         self.ipc_server.start()
 
-        # Recover active sync datasets on service restart
-        datasets = self.db.list_sync_datasets()
-        for d in datasets:
-            if d.status == SyncStatus.SYNCING.value:
-                self.db.update_sync_status(d.dataset_id, SyncStatus.WAITING.value)
-            if d.enabled and not d.paused and d.schedule_mode == "realtime":
-                if os.path.exists(d.local_path):
-                    self.sync_engine.watcher_manager.start_watching(d.dataset_id, d.local_path, d.exclude_patterns)
+        self.restore_sync_state()
 
         self.db.add_activity(
             level="INFO",
@@ -116,6 +118,47 @@ class ServiceDaemon:
             message="r2sync background service started.",
         )
         logger.info("r2sync background service is active.")
+
+    def restore_sync_state(self) -> int:
+        """Rebuild watcher and sync state for every enabled dataset after a restart.
+
+        Called on every service start -- cold boot, login, service restart or a
+        crash recovery -- so synchronization resumes without the GUI ever being
+        launched. Datasets whose folder is not mounted yet are still registered;
+        the watcher supervisor attaches to them once the path appears.
+        """
+        datasets = self.db.list_sync_datasets()
+        restored = 0
+
+        for d in datasets:
+            # A dataset left in "syncing" belonged to a process that is gone.
+            if d.status == SyncStatus.SYNCING.value:
+                logger.info(
+                    f"Dataset '{d.name}' was mid-sync when the service stopped; resetting it to waiting."
+                )
+                self.db.update_sync_status(d.dataset_id, SyncStatus.WAITING.value)
+
+            if self.sync_engine.dataset_wants_watcher(d):
+                if self.sync_engine.watcher_manager.start_watching(
+                    d.dataset_id, d.local_path, d.exclude_patterns
+                ):
+                    restored += 1
+                else:
+                    logger.warning(
+                        f"Dataset '{d.name}': {d.local_path} is not available yet; "
+                        "the watcher will attach when it appears."
+                    )
+
+            # Anything that changed while the service was down is invisible to a
+            # freshly-started watcher, and the remote may have moved on too, so
+            # every automatic dataset gets one reconciliation pass on startup.
+            if d.enabled and not d.paused and d.schedule_mode != SyncScheduleMode.MANUAL.value:
+                self.sync_engine.mark_needs_sync(d.dataset_id)
+
+        logger.info(
+            f"Restored {restored} watcher(s) across {len(datasets)} sync dataset(s) on service start."
+        )
+        return restored
 
     def stop(self) -> None:
         logger.info("Stopping r2sync background service...")

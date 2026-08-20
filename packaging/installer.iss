@@ -5,6 +5,7 @@
 #define MyAppURL "https://github.com/saurabhhbansal/r2sync"
 #define MyAppExeName "r2sync.exe"
 #define MyServiceExeName "r2sync-service.exe"
+#define MyServiceRunName "r2sync Service"
 
 [Setup]
 AppId={{D37E8492-74B0-4A59-8692-069E7FD1A982}
@@ -34,6 +35,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "autostart"; Description: "Start r2sync automatically on Windows startup (minimized to system tray)"; GroupDescription: "Startup:"
+Name: "autosync"; Description: "Keep folders synchronized in the background after every restart (recommended)"; GroupDescription: "Startup:"
 
 [Files]
 Source: "..\dist\r2sync\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -45,8 +47,13 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"" --minimized"; Flags: uninsdeletevalue; Tasks: autostart
+; The background service is registered separately from the GUI: synchronization
+; has to resume at logon whether or not the user wants the window to open.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyServiceRunName}"; ValueData: """{app}\{#MyServiceExeName}"" --standalone"; Flags: uninsdeletevalue; Tasks: autosync
 
 [Run]
+; Start syncing immediately after install rather than waiting for the next logon.
+Filename: "{app}\{#MyServiceExeName}"; Parameters: "--standalone"; Flags: nowait runhidden; Tasks: autosync
 Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall skipifsilent; Description: "Launch r2sync"
 
 [UninstallRun]

@@ -6,8 +6,9 @@ import time
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional
 
+from r2sync.config import SYNC_DEFAULT_RECONCILE_INTERVAL_MINUTES
 from r2sync.core.db import Database
-from r2sync.core.models import BackupJob, JobScheduleType
+from r2sync.core.models import BackupJob, JobScheduleType, SyncDataset, SyncScheduleMode
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,56 @@ def calculate_next_run(job: BackupJob, from_time: Optional[datetime] = None) -> 
     return None
 
 
+
+def sync_dataset_is_due(
+    dataset: SyncDataset,
+    now: datetime,
+    last_attempt_ts: Optional[float] = None,
+    reconcile_interval_minutes: int = SYNC_DEFAULT_RECONCILE_INTERVAL_MINUTES,
+) -> bool:
+    """Decide whether a sync dataset is due for a scheduled reconciliation pass.
+
+    Every mode gets a periodic pass, including "realtime" (a safety net for
+    changes the filesystem watcher could not observe -- machine asleep, watcher
+    restarted, edits made by another device) and "daily", which previously fell
+    through every branch and so was never reconciled at all.
+
+    ``last_attempt_ts`` is this process's in-memory record of the last time the
+    scheduler fired for this dataset; the persisted ``last_sync_at`` is used as
+    the fallback so a service restart does not re-sync everything at once.
+    """
+    if not dataset.enabled or dataset.paused:
+        return False
+
+    mode = dataset.schedule_mode
+
+    last_ts = last_attempt_ts
+    if last_ts is None and dataset.last_sync_at:
+        try:
+            last_ts = datetime.fromisoformat(dataset.last_sync_at).timestamp()
+        except (TypeError, ValueError):
+            last_ts = None
+
+    if mode == SyncScheduleMode.DAILY.value:
+        # One reconciliation per calendar day.
+        if not last_ts:
+            return True
+        return datetime.fromtimestamp(last_ts).date() < now.date()
+
+    if mode == SyncScheduleMode.MANUAL.value:
+        return False
+
+    if mode == SyncScheduleMode.INTERVAL.value:
+        interval_sec = max(60, (dataset.schedule_interval_minutes or 15) * 60)
+    else:
+        # realtime -> periodic safety-net reconciliation
+        interval_sec = max(60, reconcile_interval_minutes * 60)
+
+    if not last_ts:
+        return True
+    return (now.timestamp() - last_ts) >= interval_sec
+
+
 class JobScheduler:
     """Background scheduler ticking periodically to execute due backup and sync jobs."""
 
@@ -83,17 +134,21 @@ class JobScheduler:
         sync_runner_cb: Optional[Callable[[str], None]] = None,
         heartbeat_cb: Optional[Callable[[], None]] = None,
         tick_interval_seconds: float = 10.0,
+        deferred_provider: Optional[Callable[[], List[str]]] = None,
     ):
         self.db = db
         self.job_runner_cb = job_runner_cb
         self.sync_runner_cb = sync_runner_cb
         self.heartbeat_cb = heartbeat_cb
+        # Returns dataset ids that were deferred by the sync engine and should
+        # be retried on the next tick regardless of their normal schedule.
+        self.deferred_provider = deferred_provider
         self.tick_interval_seconds = tick_interval_seconds
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._last_heartbeat = 0.0
-        self._sync_last_reconcile: Dict[str, float] = {}
+        self._sync_last_reconcile: Dict[str, Optional[float]] = {}
 
     def start(self) -> None:
         with self._lock:
@@ -173,31 +228,29 @@ class JobScheduler:
                 except Exception as e:
                     logger.error(f"Failed to trigger job {job.name}: {e}", exc_info=True)
 
-        # 2. Tick Sync Datasets (Interval & Periodic Reconciliation)
+        # 2. Tick Sync Datasets (Interval, Daily & Periodic Reconciliation)
         if self.sync_runner_cb:
             datasets = self.db.list_sync_datasets()
+
+            # Datasets deferred by the engine (e.g. it was offline) are retried
+            # first, on every tick, so sync resumes the moment the link returns.
+            deferred = set(self.deferred_provider() if self.deferred_provider else [])
+
             for d in datasets:
                 if not d.enabled or d.paused:
                     continue
 
-                should_sync = False
-                last_run_ts = self._sync_last_reconcile.get(d.dataset_id, 0.0)
+                due = d.dataset_id in deferred or sync_dataset_is_due(
+                    d, now, self._sync_last_reconcile.get(d.dataset_id)
+                )
+                if not due:
+                    continue
 
-                if d.schedule_mode == "interval":
-                    interval_sec = max(60, d.schedule_interval_minutes * 60)
-                    if now_ts - last_run_ts >= interval_sec:
-                        should_sync = True
-                elif d.schedule_mode == "realtime":
-                    # Periodic 30-min reconciliation scan
-                    if now_ts - last_run_ts >= 1800:
-                        should_sync = True
-
-                if should_sync:
-                    self._sync_last_reconcile[d.dataset_id] = now_ts
-                    try:
-                        self.sync_runner_cb(d.dataset_id)
-                    except Exception as e:
-                        logger.error(f"Scheduler failed to trigger sync for dataset {d.name}: {e}")
+                self._sync_last_reconcile[d.dataset_id] = now_ts
+                try:
+                    self.sync_runner_cb(d.dataset_id)
+                except Exception as e:
+                    logger.error(f"Scheduler failed to trigger sync for dataset {d.name}: {e}")
 
         # 3. Heartbeat tick (every 60s)
         if self.heartbeat_cb and (now_ts - self._last_heartbeat >= 60.0):

@@ -1,3 +1,6 @@
+import sys
+from typing import Optional
+
 from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,6 +23,7 @@ from PySide6.QtWidgets import (
 from r2sync.config import (
     APP_DISPLAY_NAME,
     APP_VERSION,
+    GITHUB_REPO,
     SETTING_SPEED_PROFILE,
 )
 from r2sync.core.credentials import (
@@ -30,7 +34,12 @@ from r2sync.core.credentials import (
 from r2sync.core.r2_client import CloudflareR2Client
 from r2sync.core.speed_profiles import SPEED_PROFILES, get_speed_profile, list_speed_profiles
 from r2sync.core.updater import AutoUpdater, UpdateInfo
-from r2sync.utils.system import get_windows_autostart, set_windows_autostart
+from r2sync.utils.system import (
+    get_windows_autostart,
+    get_windows_service_autostart,
+    set_windows_autostart,
+    set_windows_service_autostart,
+)
 
 
 class UpdateCheckWorker(QThread):
@@ -353,6 +362,15 @@ class SettingsView(QWidget):
         self.autostart_cb.toggled.connect(self._on_autostart_toggled)
         pref_layout.addRow("Autostart:", self.autostart_cb)
 
+        # Separate from the window autostart above: this is what makes folders
+        # keep syncing after a restart even if the GUI is never opened.
+        self.service_autostart_cb = QCheckBox(
+            "Keep syncing in the background after every restart (no window needed)"
+        )
+        self.service_autostart_cb.setChecked(get_windows_service_autostart())
+        self.service_autostart_cb.toggled.connect(self._on_service_autostart_toggled)
+        pref_layout.addRow("Background sync:", self.service_autostart_cb)
+
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["Dark Theme (R2Sync Pro Dark)", "Light Theme"])
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
@@ -524,7 +542,23 @@ class SettingsView(QWidget):
 
     def _on_autostart_toggled(self, checked: bool):
         if sys.platform == "win32":
-            set_windows_autostart(APP_DISPLAY_NAME, sys.argv[0], checked)
+            set_windows_autostart(APP_DISPLAY_NAME, sys.executable, checked)
+
+    def _on_service_autostart_toggled(self, checked: bool):
+        if sys.platform != "win32":
+            return
+        if not set_windows_service_autostart(checked):
+            QMessageBox.warning(
+                self,
+                "Could Not Update Startup Setting",
+                "r2sync could not update the Windows startup registration for its "
+                "background service.",
+            )
+            return
+        if checked:
+            from r2sync.utils.system import launch_background_service
+
+            launch_background_service()
 
     def _on_theme_changed(self, index: int):
         theme_name = "light" if index == 1 else "dark"

@@ -383,9 +383,10 @@ class IPCServer:
                 dataset_data = params.get("dataset", {})
                 dataset = SyncDataset.from_dict(dataset_data)
                 success = self.db.update_sync_dataset(dataset)
-                if dataset.enabled and not dataset.paused and dataset.schedule_mode == "realtime":
-                    if os.path.exists(dataset.local_path):
-                        self.sync_engine.watcher_manager.start_watching(dataset.dataset_id, dataset.local_path, dataset.exclude_patterns)
+                if self.sync_engine.dataset_wants_watcher(dataset):
+                    self.sync_engine.watcher_manager.start_watching(
+                        dataset.dataset_id, dataset.local_path, dataset.exclude_patterns
+                    )
                 else:
                     self.sync_engine.watcher_manager.stop_watching(dataset.dataset_id)
                 return success, None
@@ -414,8 +415,10 @@ class IPCServer:
                     dataset.paused = False
                     dataset.status = "waiting"
                     self.db.update_sync_dataset(dataset)
-                    if dataset.schedule_mode == "realtime" and os.path.exists(dataset.local_path):
-                        self.sync_engine.watcher_manager.start_watching(dataset_id, dataset.local_path, dataset.exclude_patterns)
+                    if self.sync_engine.dataset_wants_watcher(dataset):
+                        self.sync_engine.watcher_manager.start_watching(
+                            dataset_id, dataset.local_path, dataset.exclude_patterns
+                        )
                     self.sync_engine.trigger_sync_async(dataset_id)
                     return True, None
                 return False, f"Dataset {dataset_id} not found"
@@ -493,6 +496,27 @@ class IPCServer:
                 exclude_id = params.get("exclude_dataset_id")
                 overlap = self.sync_engine.check_folder_overlap(candidate_path, exclude_id)
                 return overlap, None
+
+            elif method == "get_sync_watcher_status":
+                # Surfaces whether real-time watching is actually live, which
+                # previously could only be inferred from the logs.
+                datasets = self.db.list_sync_datasets()
+                mgr = self.sync_engine.watcher_manager
+                return {
+                    d.dataset_id: {
+                        "name": d.name,
+                        "wants_watcher": self.sync_engine.dataset_wants_watcher(d),
+                        "watching": mgr.is_watching(d.dataset_id),
+                        "pending_change": mgr.has_pending_change(d.dataset_id),
+                        "syncing": self.sync_engine.is_dataset_syncing(d.dataset_id),
+                        "queued_followup": self.sync_engine.has_pending_sync(d.dataset_id),
+                    }
+                    for d in datasets
+                }, None
+
+            elif method == "restart_sync_watchers":
+                started = self.sync_engine.start_all_watchers()
+                return {"watchers_started": started}, None
 
             elif method == "get_device_identity":
                 return {

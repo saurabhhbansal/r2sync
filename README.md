@@ -16,13 +16,19 @@
 * **Direct & Private**: Communicates directly from your machines to Cloudflare R2 S3 endpoints (`https://<account_id>.r2.cloudflarestorage.com`). No third-party relays or telemetry.
 * **Asynchronous Offline Tolerance**: Computers do not need to be online simultaneously. R2 acts as the persistent cloud sync and storage layer.
 * **Deterministic Conflict Center**: Safe conflict resolution with automated non-destructive conflict copies `filename (conflict - <Device> - <Date>).ext` and 1-click Keep Local / Keep Remote / Keep Both resolution.
-* **Mass Deletion Protection**: Built-in deletion safety thresholds (e.g. max 50 deletes) that automatically pause sync and alert the user if catastrophic deletes occur.
-* **Real-Time Change Watching**: Native Windows `ReadDirectoryChangesW` filesystem watcher with event coalescing and debouncing.
+* **Mass Deletion Protection**: A deletion ceiling expressed as a file count (e.g. max 50 deletes) that automatically pauses sync and alerts the user if catastrophic deletes occur. Emptying an entire synchronized folder is always held for confirmation, because an unmounted drive is indistinguishable from a deliberate wipe.
+* **Real-Time Change Watching**: Native Windows `ReadDirectoryChangesW` filesystem watcher (overlapped I/O, per-path exclusion filtering, automatic polling fallback) with event coalescing and debouncing. Changes that land while a sync is already running are queued into a follow-up run rather than dropped.
+* **Survives Reboots Without the GUI**: The background service registers itself for Windows logon startup, restores every enabled dataset's watcher on start, and reconciles anything that changed while the machine was off. The desktop window never needs to be open.
 * **"Set Up This PC" Onboarding**: 1-click auto-discovery of shared datasets on Cloudflare R2 when setting up new computers.
 * **Device Identity Management**: Secure local UUID generation and user-friendly computer naming without collecting hardware serial numbers or MAC addresses.
 * **Modern PySide6 GUI**: 6-view layout (Dashboard, Backups, Sync, Activity, Storage, Settings), system tray integration, and dark/light themes.
 * **Independent Background Service**: Runs as a background Windows service or daemon with local JSON-RPC IPC and automatic retry logic.
 * **Hardened Security**: Credentials stored exclusively in native Windows Credential Manager / DPAPI. Passed to Rclone in-memory without plain-text config files on disk.
+* **Tuned in Both Directions**: Speed profiles configure upload concurrency *and* parallel download streams
+  (`--multi-thread-streams` / `--multi-thread-cutoff`), so pulling data back from R2 is not limited to a single
+  connection. Downloads stay atomic (`.partial` + rename) so an interrupted transfer never corrupts a local file.
+* **Honest Progress**: While rclone is still enumerating, the UI reports `Scanned / Discovered`; once the transfer
+  queue is complete it switches to a real `Transferred / Total` with a trustworthy percentage, speed and ETA.
 * **Zero Egress Fees**: Cloudflare R2 charges $0 for egress bandwidth, making continuous multi-PC synchronization extraordinarily cost-effective.
 
 ---
@@ -101,12 +107,23 @@ pip install -e .[dev]
 # Run comprehensive test suite
 pytest -v
 
+# The end-to-end synchronization tests drive a real rclone binary against a
+# local stand-in for R2. They skip automatically unless one is available:
+#   R2SYNC_TEST_RCLONE=/path/to/rclone pytest -v tests/test_sync_e2e.py
+
 # Launch GUI application
 python -m r2sync.gui.main
 
 # Launch background service
-python -m r2sync.service.main
+python -m r2sync.service.main --standalone
 ```
+
+### Background Service & Windows Startup
+Synchronization is performed by `r2sync-service`, not by the GUI. The installer's
+*"Keep folders synchronized in the background after every restart"* task registers the
+service under `HKCU\...\CurrentVersion\Run`, and the service re-registers itself on
+every start. Opening the desktop app also launches the service if it is not already
+running. The toggle lives in **Settings -> Application Preferences -> Background sync**.
 
 ---
 

@@ -130,101 +130,114 @@ class BackupEngine:
         attempt = 0
         final_run = run_record
 
-        while attempt <= max_retries:
-            attempt += 1
+        # The retry loop and all post-run bookkeeping run under a finally
+        # that releases the per-job slot. An exception escaping here used to
+        # leave the job permanently marked "running", so every later run of
+        # it was refused until the process restarted.
+        try:
+            while attempt <= max_retries:
+                attempt += 1
 
-            # Pre-check 1: Credentials
-            if not creds or not creds.access_key_id or not creds.secret_access_key:
-                final_run.status = RunStatus.FAILED.value
-                final_run.error_message = "Cloudflare R2 credentials are missing or incomplete."
-                break
-
-            # Pre-check 2: Source Path
-            if not os.path.exists(job.source_path):
-                final_run.status = RunStatus.FAILED.value
-                final_run.error_message = f"Source directory does not exist: {job.source_path}"
-                break
-
-            # Pre-check 3: Rclone Binary
-            if not RcloneBinaryManager.is_installed():
-                try:
-                    logger.info("Rclone not installed. Downloading binary...")
-                    RcloneBinaryManager.download_and_install()
-                except Exception as e:
+                # Pre-check 1: Credentials
+                if not creds or not creds.access_key_id or not creds.secret_access_key:
                     final_run.status = RunStatus.FAILED.value
-                    final_run.error_message = f"Failed to install Rclone engine: {e}"
+                    final_run.error_message = "Cloudflare R2 credentials are missing or incomplete."
                     break
 
-            # Pre-check 4: Network connectivity
-            if not check_internet_connection():
+                # Pre-check 2: Source Path
+                if not os.path.exists(job.source_path):
+                    final_run.status = RunStatus.FAILED.value
+                    final_run.error_message = f"Source directory does not exist: {job.source_path}"
+                    break
+
+                # Pre-check 3: Rclone Binary
+                if not RcloneBinaryManager.is_installed():
+                    try:
+                        logger.info("Rclone not installed. Downloading binary...")
+                        RcloneBinaryManager.download_and_install()
+                    except Exception as e:
+                        final_run.status = RunStatus.FAILED.value
+                        final_run.error_message = f"Failed to install Rclone engine: {e}"
+                        break
+
+                # Pre-check 4: Network connectivity
+                if not check_internet_connection():
+                    if attempt <= max_retries:
+                        logger.warning(f"No internet connection. Retrying in 15 seconds (attempt {attempt}/{max_retries})...")
+                        time.sleep(15)
+                        continue
+                    else:
+                        final_run.status = RunStatus.FAILED.value
+                        final_run.error_message = "No internet connection available."
+                        break
+
+                # Execute backup
+                speed_prof = self.db.get_setting("speed_profile") or "turbo"
+
+                def on_progress(p: TransferProgressEvent):
+                    self._broadcast_progress(p)
+
+                def on_file_transfer(ft: FileTransfer):
+                    self.db.add_transfer(ft)
+
+                final_run = self.rclone_engine.run_backup(
+                    job=job,
+                    run_record=run_record,
+                    progress_cb=on_progress,
+                    file_transfer_cb=on_file_transfer,
+                    creds=creds,
+                    speed_profile=speed_prof,
+                )
+
+                # If completed or canceled, do not retry
+                if final_run.status in (RunStatus.COMPLETED.value, RunStatus.CANCELED.value):
+                    break
+
+                # If failed, retry with backoff if attempts remain
                 if attempt <= max_retries:
-                    logger.warning(f"No internet connection. Retrying in 15 seconds (attempt {attempt}/{max_retries})...")
-                    time.sleep(15)
-                    continue
-                else:
-                    final_run.status = RunStatus.FAILED.value
-                    final_run.error_message = "No internet connection available."
-                    break
+                    logger.warning(f"Job '{job.name}' failed on attempt {attempt}. Retrying in 10s...")
+                    time.sleep(10)
 
-            # Execute backup
-            speed_prof = self.db.get_setting("speed_profile") or "turbo"
-
-            def on_progress(p: TransferProgressEvent):
-                self._broadcast_progress(p)
-
-            def on_file_transfer(ft: FileTransfer):
-                self.db.add_transfer(ft)
-
-            final_run = self.rclone_engine.run_backup(
-                job=job,
-                run_record=run_record,
-                progress_cb=on_progress,
-                file_transfer_cb=on_file_transfer,
-                creds=creds,
-                speed_profile=speed_prof,
+            # Update database with final run record
+            self.db.update_run(final_run)
+            self.db.update_job_status(
+                job_id=job_id,
+                last_run_at=datetime.now().isoformat(),
+                last_status=final_run.status,
             )
 
-            # If completed or canceled, do not retry
-            if final_run.status in (RunStatus.COMPLETED.value, RunStatus.CANCELED.value):
-                break
-
-            # If failed, retry with backoff if attempts remain
-            if attempt <= max_retries:
-                logger.warning(f"Job '{job.name}' failed on attempt {attempt}. Retrying in 10s...")
-                time.sleep(10)
-
-        # Update database with final run record
-        self.db.update_run(final_run)
-        self.db.update_job_status(
-            job_id=job_id,
-            last_run_at=datetime.now().isoformat(),
-            last_status=final_run.status,
-        )
-
-        # Log completion
-        if final_run.status == RunStatus.COMPLETED.value:
-            mb = round(final_run.bytes_transferred / (1024 * 1024), 2)
-            msg = f"Backup '{job.name}' completed: {final_run.files_transferred} files ({mb} MB) in {final_run.duration_seconds}s"
-            self.db.add_activity("INFO", "backup", msg, job_id=job_id, run_id=run_id)
-            self.notifier.show_toast(
-                title=f"Backup Completed: {job.name}",
-                message=f"Transferred {final_run.files_transferred} files ({mb} MB) in {final_run.duration_seconds}s.",
-                notification_type="success",
-            )
-        elif final_run.status == RunStatus.CANCELED.value:
-            msg = f"Backup '{job.name}' was canceled."
-            self.db.add_activity("WARNING", "backup", msg, job_id=job_id, run_id=run_id)
-        else:
-            msg = f"Backup '{job.name}' failed: {final_run.error_message}"
-            self.db.add_activity("ERROR", "backup", msg, job_id=job_id, run_id=run_id)
-            self.notifier.show_toast(
-                title=f"Backup Failed: {job.name}",
-                message=final_run.error_message or "An error occurred during synchronization.",
-                notification_type="error",
-            )
-
-        with self._lock:
-            self._running_jobs.pop(job_id, None)
+            # Log completion
+            if final_run.status == RunStatus.COMPLETED.value:
+                mb = round(final_run.bytes_transferred / (1024 * 1024), 2)
+                msg = f"Backup '{job.name}' completed: {final_run.files_transferred} files ({mb} MB) in {final_run.duration_seconds}s"
+                self.db.add_activity("INFO", "backup", msg, job_id=job_id, run_id=run_id)
+                self.notifier.show_toast(
+                    title=f"Backup Completed: {job.name}",
+                    message=f"Transferred {final_run.files_transferred} files ({mb} MB) in {final_run.duration_seconds}s.",
+                    notification_type="success",
+                )
+            elif final_run.status == RunStatus.CANCELED.value:
+                msg = f"Backup '{job.name}' was canceled."
+                self.db.add_activity("WARNING", "backup", msg, job_id=job_id, run_id=run_id)
+            else:
+                msg = f"Backup '{job.name}' failed: {final_run.error_message}"
+                self.db.add_activity("ERROR", "backup", msg, job_id=job_id, run_id=run_id)
+                self.notifier.show_toast(
+                    title=f"Backup Failed: {job.name}",
+                    message=final_run.error_message or "An error occurred during synchronization.",
+                    notification_type="error",
+                )
+        except Exception as e:
+            logger.error(f"Unhandled error running backup job {job.name}: {e}", exc_info=True)
+            final_run.status = RunStatus.FAILED.value
+            final_run.error_message = str(e)
+            try:
+                self.db.update_run(final_run)
+            except Exception:
+                logger.debug("Could not persist failed run record", exc_info=True)
+        finally:
+            with self._lock:
+                self._running_jobs.pop(job_id, None)
 
         self._broadcast_completion(final_run)
         return final_run

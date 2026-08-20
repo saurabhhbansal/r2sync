@@ -781,10 +781,14 @@ class Database:
         last_error: Optional[str] = None,
         total_files: Optional[int] = None,
         total_bytes: Optional[int] = None,
+        initial_sync_done: Optional[bool] = None,
     ) -> None:
         with self.transaction() as cur:
             updates = ["status = ?", "updated_at = ?"]
             params = [status, datetime.now().isoformat()]
+            if initial_sync_done is not None:
+                updates.append("initial_sync_done = ?")
+                params.append(1 if initial_sync_done else 0)
             if last_sync_at is not None:
                 updates.append("last_sync_at = ?")
                 params.append(last_sync_at)
