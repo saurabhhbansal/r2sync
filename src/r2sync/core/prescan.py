@@ -78,6 +78,14 @@ def scan_local_tree(
     if not os.path.isdir(local_path):
         return 0, 0, False
 
+    # A directory that cannot be read is skipped, and the tree below it goes
+    # uncounted. Reporting that as a complete scan understated the folder --
+    # visibly in the UI, and invisibly in the deletion guard, which turns this
+    # count into bisync's --max-delete percentage: a smaller total makes the
+    # percentage larger, so an undercount quietly *raises* how much deletion
+    # bisync will accept before it stops.
+    complete = True
+
     stack = [local_path]
     while stack:
         if cancel is not None and cancel.is_set():
@@ -99,9 +107,10 @@ def scan_local_tree(
                         continue
         except OSError as e:
             logger.debug(f"Pre-scan could not read {current}: {e}")
+            complete = False
             continue
 
-    return total_files, total_bytes, True
+    return total_files, total_bytes, complete
 
 
 def scan_remote_prefix(

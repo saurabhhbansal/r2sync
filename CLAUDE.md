@@ -44,7 +44,7 @@ R2SYNC_TEST_RCLONE=/path/to/rclone QT_QPA_PLATFORM=offscreen pytest -q
 R2SYNC_REQUIRE_FULL_SUITE=1 QT_QPA_PLATFORM=offscreen pytest -v -rs
 ```
 
-Expect **177 passed, 1 skipped** on Linux with rclone present. The one skip is
+Expect **187 passed, 1 skipped** on Linux with rclone present. The one skip is
 `test_service_restore.py::…` — a Windows-registry test that runs on the Windows
 CI leg.
 
@@ -120,6 +120,20 @@ which makes the updater offer users the build they are already running.
 
 ## Things that bite
 
+- **A dataset's remote location is its identity.** `remote_prefix` comes from
+  the dataset id, so a fresh id means a fresh, empty prefix -- re-adding a
+  folder used to upload it all over again and orphan the previous copy in the
+  bucket. `_find_reattachable_dataset` matches a folder back to its own data
+  using the `local_path` and `created_by_device_id` each dataset publishes in
+  `metadata/dataset.json`. Backup jobs never had this problem: their
+  destination is the bucket and subfolder the user chose, which is stable.
+- **A device's stored status is a claim, not an answer.** Nothing revises it,
+  so a computer that is switched off stays "online" in every other computer's
+  list. Read it through `presence_status` against `last_seen_at`, which the
+  heartbeat rewrites every 60 seconds. And never write this computer's own row
+  back from R2: that copy is only rewritten at the start and end of a sync, and
+  restoring it aged the local heartbeat backwards until the PC listed itself as
+  offline.
 - **rclone spells Windows paths its own way.** Its local backend reports every
   absolute Windows path with the extended-length prefix and forward slashes
   (`//?/C:/Users/me/Docs`), while a dataset stores what the folder picker gave

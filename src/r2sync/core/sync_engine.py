@@ -703,7 +703,20 @@ class SyncEngine:
             final_status = SyncStatus.CONFLICT.value if unresolved > 0 else SyncStatus.SYNCED.value
 
             # Calculate local files and size
-            cnt, sz = self._calc_folder_stats(dataset.local_path, dataset.exclude_patterns)
+            cnt, sz, counted_everything = self._calc_folder_stats(
+                dataset.local_path, dataset.exclude_patterns
+            )
+            if not counted_everything:
+                # Part of the tree would not open -- a permission, a lock, a
+                # path Windows will not hand to os.scandir. Keeping the last
+                # figure that was arrived at honestly beats replacing it with
+                # one known to be short; the deletion guard reads this.
+                logger.warning(
+                    f"Could not read all of '{dataset.local_path}'; keeping the previous "
+                    f"file count ({dataset.total_files:,}) rather than storing a partial one."
+                )
+                cnt, sz = dataset.total_files, dataset.total_bytes
+
             self.db.update_sync_status(
                 dataset_id=dataset_id,
                 status=final_status,
@@ -837,16 +850,19 @@ class SyncEngine:
             self._deferred_syncs.clear()
         return deferred
 
-    def _calc_folder_stats(self, local_path: str, exclude_patterns: List[str]) -> Tuple[int, int]:
-        """Compute total non-excluded file count and total size in bytes.
+    def _calc_folder_stats(
+        self, local_path: str, exclude_patterns: List[str]
+    ) -> Tuple[int, int, bool]:
+        """Total non-excluded file count and size, and whether the walk finished.
 
         Shares the pre-scan's walker so the count matches what actually gets
         synchronized. This number also drives the deletion-safety percentage
         handed to bisync, so counting excluded files here would loosen that
-        guard.
+        guard -- and so would storing a total from a walk that could not read
+        every directory, which is why the third value is returned rather than
+        discarded.
         """
-        files, size, _complete = scan_local_tree(local_path, exclude_patterns)
-        return files, size
+        return scan_local_tree(local_path, exclude_patterns)
 
     def _scan_and_record_conflicts(self, dataset: SyncDataset) -> None:
         """Scan dataset folder for deterministic conflict files and record them in the database."""
@@ -995,6 +1011,14 @@ class SyncEngine:
 
             for dev in remote_devices:
                 if dev.device_id == curr_dev_id:
+                    # This computer's own row is kept current by the heartbeat,
+                    # every 60 seconds. The copy in R2 is only rewritten when a
+                    # sync starts and finishes, so writing it back here dragged
+                    # last_seen_at backwards -- far enough, between syncs, that
+                    # this PC listed *itself* as offline while it was plainly
+                    # running. Only adopt it if there is nothing local yet.
+                    if self.db.get_sync_device(curr_dev_id, dataset.dataset_id) is not None:
+                        continue
                     dev.is_current_device = True
                 self.db.upsert_sync_device(dev)
         except Exception as e:

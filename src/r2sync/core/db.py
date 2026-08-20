@@ -18,6 +18,7 @@ from r2sync.core.models import (
     FileTransfer,
     SyncConflict,
     SyncDataset,
+    presence_status,
 )
 from r2sync.utils.paths import get_database_path, get_device_id_path
 
@@ -871,7 +872,19 @@ class Database:
                 cur.execute("SELECT * FROM sync_devices WHERE dataset_id = ? ORDER BY is_current_device DESC, device_name ASC", (dataset_id,))
             else:
                 cur.execute("SELECT * FROM sync_devices ORDER BY is_current_device DESC, device_name ASC")
-            return [Device.from_dict(dict(row)) for row in cur.fetchall()]
+            return [self._with_presence(Device.from_dict(dict(row))) for row in cur.fetchall()]
+
+    @staticmethod
+    def _with_presence(device: Device) -> Device:
+        """Resolve the stored status against when the device was last heard from.
+
+        The column records what some computer last claimed about itself, and
+        nothing revises it afterwards -- a machine switched off stayed "online"
+        indefinitely. Every reader goes through here, so the two of them cannot
+        disagree. See :func:`~r2sync.core.models.presence_status`.
+        """
+        device.status = presence_status(device.status, device.last_seen_at)
+        return device
 
     def get_sync_device(self, device_id: str, dataset_id: Optional[str] = None) -> Optional[Device]:
         with self.transaction() as cur:
@@ -880,7 +893,7 @@ class Database:
             else:
                 cur.execute("SELECT * FROM sync_devices WHERE device_id = ? LIMIT 1", (device_id,))
             row = cur.fetchone()
-            return Device.from_dict(dict(row)) if row else None
+            return self._with_presence(Device.from_dict(dict(row))) if row else None
 
     def delete_sync_device(self, device_id: str, dataset_id: Optional[str] = None) -> bool:
         with self.transaction() as cur:

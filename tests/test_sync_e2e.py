@@ -23,7 +23,16 @@ import pytest
 from conftest import skip_module_unless
 
 from r2sync.core.db import Database
-from r2sync.core.models import R2Credentials, SyncDataset, SyncScheduleMode, SyncStatus
+from r2sync.core.models import (
+    BackupJob,
+    BackupMode,
+    BackupRun,
+    R2Credentials,
+    RunStatus,
+    SyncDataset,
+    SyncScheduleMode,
+    SyncStatus,
+)
 from r2sync.core.sync_engine import SyncEngine
 
 RCLONE_BIN = os.environ.get("R2SYNC_TEST_RCLONE") or shutil.which("rclone")
@@ -562,3 +571,103 @@ def test_profile_flags_are_all_accepted_by_rclone(tmp_path):
         ])
         assert res.returncode == 0, f"profile {prof.id} produced an invalid command: {res.stderr[-500:]}"
         assert (dst / "f.txt").read_text(encoding="utf-8") == "hi"
+
+
+# ---------------------------------------------------------------------------
+# Backup jobs: a second run must not re-upload what is already there
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def backup_harness(tmp_path, monkeypatch):
+    """A real BackupJob pointed at a local stand-in for R2, as in `harness`."""
+    from r2sync.core.rclone_engine import RcloneEngine
+
+    data_dir = tmp_path / "appdata"
+    (data_dir / "rclone").mkdir(parents=True)
+    rclone_name = "rclone.exe" if sys.platform == "win32" else "rclone"
+    shutil.copy(RCLONE_BIN, data_dir / "rclone" / rclone_name)
+    os.chmod(data_dir / "rclone" / rclone_name, 0o755)
+    monkeypatch.setenv("R2SYNC_DATA_DIR", str(data_dir))
+
+    root = Path(tempfile.mkdtemp(prefix="r2bak")).resolve()
+    fake_r2 = root / "fakeR2"
+    fake_r2.mkdir()
+    source = root / "Photos"
+    source.mkdir()
+
+    def build_env(self, creds=None):
+        env = os.environ.copy()
+        env["RCLONE_CONFIG_R2_TYPE"] = "alias"
+        env["RCLONE_CONFIG_R2_REMOTE"] = str(fake_r2)
+        return env
+
+    monkeypatch.setattr(RcloneEngine, "_build_env", build_env)
+
+    engine = RcloneEngine()
+    yield engine, source, fake_r2 / "bkt" / "Photos"
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def _run_backup(engine, source: Path, mode: str = BackupMode.SYNC.value) -> BackupRun:
+    job = BackupJob(
+        id=1,
+        name="Photos Backup",
+        source_path=str(source),
+        bucket_name="bkt",
+        # What the dialog fills in from the folder name -- deterministic, so a
+        # job deleted and recreated lands on the same objects.
+        remote_prefix="Photos",
+        backup_mode=mode,
+    )
+    return engine.run_backup(job, BackupRun(job_id=1, job_name=job.name, id=1))
+
+
+def test_a_repeated_backup_does_not_upload_the_same_files_again(backup_harness):
+    """The bill, not the clock, is what this protects.
+
+    Sync datasets used to re-upload everything when a folder was removed and
+    re-added, because the remote location came from a fresh uuid. A backup job
+    derives its destination from the bucket and subfolder the user chose, so
+    the same job -- or a recreated one with the same settings -- points at the
+    objects already uploaded and rclone skips them.
+    """
+    engine, source, remote = backup_harness
+    for i in range(3):
+        (source / f"photo_{i}.jpg").write_bytes(os.urandom(256 * 1024))
+
+    first = _run_backup(engine, source)
+    assert first.status == RunStatus.COMPLETED.value
+    assert first.files_transferred == 3
+    assert sorted(p.name for p in remote.iterdir()) == [f"photo_{i}.jpg" for i in range(3)]
+
+    second = _run_backup(engine, source)
+    assert second.status == RunStatus.COMPLETED.value
+    assert second.files_transferred == 0, "unchanged files were uploaded a second time"
+    assert second.bytes_transferred == 0
+
+
+def test_recreating_a_backup_job_reuses_the_objects_already_uploaded(backup_harness):
+    """Deleting a job keeps its data; a new job over the same folder finds it."""
+    engine, source, remote = backup_harness
+    (source / "keep.bin").write_bytes(os.urandom(512 * 1024))
+
+    assert _run_backup(engine, source).files_transferred == 1
+
+    # A brand-new job record, as if the old one had been deleted and re-added.
+    recreated = _run_backup(engine, source)
+    assert recreated.files_transferred == 0, "recreating the job re-uploaded the folder"
+
+
+def test_only_the_changed_file_is_uploaded_on_the_next_backup(backup_harness):
+    engine, source, remote = backup_harness
+    (source / "a.txt").write_text("one", encoding="utf-8")
+    (source / "b.txt").write_text("two", encoding="utf-8")
+    _run_backup(engine, source)
+
+    time.sleep(1.1)  # a filesystem timestamp rclone can actually tell apart
+    (source / "b.txt").write_text("two, edited", encoding="utf-8")
+
+    run = _run_backup(engine, source)
+    assert run.files_transferred == 1
+    assert (remote / "b.txt").read_text(encoding="utf-8") == "two, edited"

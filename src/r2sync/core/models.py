@@ -246,6 +246,45 @@ class ConflictResolution(str, Enum):
     KEEP_BOTH = "keep_both"
 
 
+# The scheduler's heartbeat rewrites last_seen_at every 60 seconds, so a
+# computer that has not been heard from in fifteen of those is genuinely gone
+# rather than merely slow.
+DEVICE_PRESENCE_TIMEOUT_MINUTES = 15
+
+
+def presence_status(
+    stored_status: str,
+    last_seen_at: Optional[str],
+    now: Optional[datetime] = None,
+    timeout_minutes: int = DEVICE_PRESENCE_TIMEOUT_MINUTES,
+) -> str:
+    """What to show for a computer, given when it was last heard from.
+
+    The stored status is a claim some computer wrote down at a moment in the
+    past, and nothing ever revises it: a machine that is switched off keeps
+    whatever it last published, and stays "online" in every other computer's
+    list forever. Read against last_seen_at it becomes an answer that can go
+    stale on its own.
+
+    A recent heartbeat outranks a stale claim, which is the other half of the
+    same bug -- this computer could show itself offline while its own heartbeat
+    was ticking, because a device registration fetched from R2 carried an older
+    timestamp and an older status.
+    """
+    if not last_seen_at:
+        return stored_status
+
+    try:
+        seen = datetime.fromisoformat(last_seen_at)
+    except (TypeError, ValueError):
+        return stored_status
+
+    now = now or datetime.now()
+    if (now - seen).total_seconds() > timeout_minutes * 60:
+        return "offline"
+    return stored_status if stored_status in ("online", "syncing") else "online"
+
+
 @dataclass
 class Device:
     device_id: str

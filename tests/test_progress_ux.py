@@ -206,3 +206,40 @@ def test_a_rebaseline_retry_does_not_shrink_the_reported_total():
     assert total == 1_150_000_000, "the total shrank partway through one sync"
     assert files == 4200
     assert totals_final and phase == TransferPhaseTracker.PHASE_TRANSFERRING
+
+
+def test_a_directory_that_cannot_be_read_is_reported_as_an_incomplete_scan(tmp_path):
+    """It used to be skipped silently and the walk still called itself complete.
+
+    The total feeds bisync's --max-delete percentage, and because that is
+    threshold/total, a short total produces a *larger* percentage -- an
+    unreadable subtree quietly raised how much deletion bisync would accept.
+    """
+    import os
+    import sys
+
+    if sys.platform == "win32" or os.geteuid() == 0:
+        pytest.skip("needs a directory the current user genuinely cannot read")
+
+    (tmp_path / "visible.bin").write_bytes(b"x" * 1000)
+    hidden = tmp_path / "locked"
+    hidden.mkdir()
+    (hidden / "big.bin").write_bytes(b"y" * 50_000)
+    os.chmod(hidden, 0o000)
+
+    try:
+        files, size, complete = scan_local_tree(str(tmp_path), [])
+    finally:
+        os.chmod(hidden, 0o700)
+
+    assert complete is False, "an unreadable subtree was reported as a complete scan"
+    assert files == 1 and size == 1000
+
+
+def test_a_fully_readable_tree_still_reports_complete(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"x" * 10)
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.bin").write_bytes(b"y" * 20)
+
+    files, size, complete = scan_local_tree(str(tmp_path), [])
+    assert (files, size, complete) == (2, 30, True)

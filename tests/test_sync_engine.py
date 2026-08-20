@@ -378,3 +378,93 @@ def test_genuinely_offline_is_still_reported_as_offline(monkeypatch):
 
     monkeypatch.setattr(system.socket, "create_connection", unreachable)
     assert system.check_internet_connection() is False
+
+
+# ---------------------------------------------------------------------------
+# Which computers are shown as present
+# ---------------------------------------------------------------------------
+
+
+def test_a_computer_that_stopped_reporting_is_shown_as_offline(db_fixture):
+    """Nothing ever revised the stored status, so a switched-off PC stayed online."""
+    from datetime import datetime, timedelta
+
+    stale = (datetime.now() - timedelta(hours=6)).isoformat()
+    db_fixture.upsert_sync_device(Device(
+        device_id="other-pc", device_name="Laptop", dataset_id="ds1",
+        status="online", last_seen_at=stale,
+    ))
+
+    listed = db_fixture.list_sync_devices("ds1")
+    assert [d.status for d in listed] == ["offline"]
+
+
+def test_a_recent_heartbeat_outranks_a_stale_stored_status(db_fixture):
+    """The reported symptom: this PC showing itself offline while it was running.
+
+    Fetching device registrations from R2 wrote back an older status and an
+    older timestamp over the row the heartbeat maintains locally.
+    """
+    from datetime import datetime
+
+    db_fixture.upsert_sync_device(Device(
+        device_id="this-pc", device_name="Desktop", dataset_id="ds1",
+        is_current_device=True, status="offline",
+        last_seen_at=datetime.now().isoformat(),
+    ))
+
+    listed = db_fixture.list_sync_devices("ds1")
+    assert [d.status for d in listed] == ["online"]
+
+
+def test_a_syncing_computer_keeps_saying_syncing(db_fixture):
+    from datetime import datetime
+
+    db_fixture.upsert_sync_device(Device(
+        device_id="this-pc", device_name="Desktop", dataset_id="ds1",
+        status="syncing", last_seen_at=datetime.now().isoformat(),
+    ))
+    assert db_fixture.list_sync_devices("ds1")[0].status == "syncing"
+
+
+def test_a_device_that_never_reported_is_left_alone(db_fixture):
+    """No timestamp is not evidence of absence; do not invent one."""
+    from r2sync.core.models import presence_status
+
+    assert presence_status("online", None) == "online"
+    assert presence_status("offline", "not a timestamp") == "offline"
+
+
+def test_refreshing_from_r2_does_not_age_this_computers_own_heartbeat(db_fixture, monkeypatch):
+    """The remote copy is only rewritten at the start and end of a sync."""
+    from datetime import datetime, timedelta
+
+    dataset = SyncDataset(
+        dataset_id="ds1", name="Docs", bucket_name="bkt",
+        remote_prefix="r2sync/v1/datasets/ds1", local_path="/tmp/docs",
+    )
+    db_fixture.create_sync_dataset(dataset)
+
+    dev_id = db_fixture.get_or_create_device_id()
+    fresh = datetime.now().isoformat()
+    db_fixture.upsert_sync_device(Device(
+        device_id=dev_id, device_name="Desktop", dataset_id="ds1",
+        is_current_device=True, status="online", last_seen_at=fresh,
+    ))
+
+    engine = SyncEngine(db=db_fixture)
+    monkeypatch.setattr("r2sync.core.sync_engine.get_r2_credentials",
+                        lambda: MagicMock())
+    stale = (datetime.now() - timedelta(hours=8)).isoformat()
+    monkeypatch.setattr(
+        engine.rclone_engine, "fetch_remote_devices",
+        lambda ds, creds=None: [Device(
+            device_id=dev_id, device_name="Desktop", dataset_id="ds1",
+            status="online", last_seen_at=stale,
+        )],
+    )
+
+    devices = engine.refresh_connected_devices("ds1")
+
+    assert [d.status for d in devices] == ["online"], \
+        "this PC aged itself out by fetching its own registration back from R2"
