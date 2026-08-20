@@ -13,6 +13,7 @@ import hashlib
 import os
 import shutil
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -117,6 +118,19 @@ class Harness:
 
 @pytest.fixture
 def harness(tmp_path, monkeypatch, request):
+    # bisync names its state files after both synced paths flattened into a
+    # single filename -- "<path1 with separators as _>..<path2 likewise>".
+    # pytest's tmp_path spells out pytest-of-<user>/pytest-N/<test name>, and
+    # because path2 here is an alias onto a second local tree under that same
+    # root, the name came to 266 characters: past Windows' 255-character limit
+    # on a filename, so every test in this module died at "syntax error
+    # detected in your path(s)" before transferring a byte. Production stays
+    # far short of it -- path2 there is the string "r2:bucket/..." rather than
+    # a second absolute path -- so give just the two synced trees a short root
+    # of their own and leave everything else under tmp_path.
+    synced_root = Path(tempfile.mkdtemp(prefix="r2e2e"))
+    request.addfinalizer(lambda: shutil.rmtree(synced_root, ignore_errors=True))
+
     data_dir = tmp_path / "appdata"
     (data_dir / "rclone").mkdir(parents=True)
     # Must match get_rclone_executable_path(), which appends ".exe" on Windows.
@@ -127,7 +141,7 @@ def harness(tmp_path, monkeypatch, request):
     os.chmod(data_dir / "rclone" / rclone_name, 0o755)
     monkeypatch.setenv("R2SYNC_DATA_DIR", str(data_dir))
 
-    fake_r2 = tmp_path / "fakeR2"
+    fake_r2 = synced_root / "fakeR2"
     fake_r2.mkdir()
 
     # Swap the S3 backend for a local alias; everything else is production code.
@@ -145,7 +159,7 @@ def harness(tmp_path, monkeypatch, request):
     )
     monkeypatch.setattr("r2sync.core.sync_engine.check_internet_connection", lambda: True)
 
-    local = tmp_path / "Mes Documents Été"
+    local = synced_root / "Mes Documents Été"
     local.mkdir()
 
     db = Database(db_path=data_dir / "e2e.sqlite")
@@ -168,7 +182,7 @@ def harness(tmp_path, monkeypatch, request):
     engine = SyncEngine(db=db)
     engine.watcher_manager.debounce_seconds = 0.4
 
-    h = Harness(tmp_path, db, engine, dataset, local, remote_data)
+    h = Harness(synced_root, db, engine, dataset, local, remote_data)
     yield h
 
     engine.stop_all_watchers()
