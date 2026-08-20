@@ -1,5 +1,6 @@
 """Automated update checker and seamless installer for r2sync."""
 
+import hashlib
 import logging
 import os
 import re
@@ -28,6 +29,7 @@ class UpdateInfo:
     download_url: Optional[str] = None
     asset_name: Optional[str] = None
     asset_size: int = 0
+    asset_digest: Optional[str] = None
     published_at: Optional[str] = None
     html_url: Optional[str] = None
 
@@ -42,6 +44,26 @@ def parse_version_tuple(ver_str: str) -> tuple:
     while len(parts) < 3:
         parts.append(0)
     return tuple(parts[:3])
+
+
+class IntegrityError(Exception):
+    """Raised when a downloaded update does not match its published size or digest."""
+
+
+def _new_hasher(digest: Optional[str]):
+    """Build a hasher for an 'algo:hex' digest string.
+
+    Returns (hasher, expected_hex), or (None, None) when the release published no
+    digest or names an algorithm this Python build cannot provide.
+    """
+    if not digest or ":" not in digest:
+        return None, None
+    algo, _, expected = digest.partition(":")
+    try:
+        return hashlib.new(algo.strip().lower()), expected.strip().lower()
+    except ValueError:
+        logger.warning(f"Unsupported digest algorithm {algo!r}; skipping hash verification.")
+        return None, None
 
 
 class AutoUpdater:
@@ -94,6 +116,7 @@ class AutoUpdater:
             download_url = chosen_asset.get("browser_download_url") if chosen_asset else None
             asset_size = chosen_asset.get("size", 0) if chosen_asset else 0
             asset_name = chosen_asset.get("name", "") if chosen_asset else ""
+            asset_digest = chosen_asset.get("digest") if chosen_asset else None
 
             return UpdateInfo(
                 available=is_newer,
@@ -104,6 +127,7 @@ class AutoUpdater:
                 download_url=download_url,
                 asset_name=asset_name,
                 asset_size=asset_size,
+                asset_digest=asset_digest,
                 published_at=data.get("published_at"),
                 html_url=data.get("html_url", info.html_url),
             )
@@ -118,7 +142,13 @@ class AutoUpdater:
         progress_cb: Optional[Callable[[int, int], None]] = None,
         target_path: Optional[Path] = None,
     ) -> Path:
-        """Download update asset file with streaming progress callback."""
+        """Download the update asset, verify it, and only then publish it at out_path.
+
+        Bytes land in a sibling .part file, so a dropped connection can never leave a
+        truncated installer where apply_update_windows would find and launch it. The
+        .part is promoted to out_path only once both the size and the digest GitHub
+        published for the asset match what actually arrived.
+        """
         if not update_info.download_url:
             raise ValueError("No download URL available for this update.")
 
@@ -127,21 +157,48 @@ class AutoUpdater:
 
         filename = update_info.asset_name or f"r2sync-setup-{update_info.latest_version}.exe"
         out_path = target_path or (dest_dir / filename)
+        part_path = out_path.with_name(out_path.name + ".part")
 
-        with requests.get(update_info.download_url, stream=True, timeout=60.0) as r:
-            r.raise_for_status()
-            total_bytes = int(r.headers.get("content-length", update_info.asset_size or 0))
-            downloaded = 0
+        hasher, expected_digest = _new_hasher(update_info.asset_digest)
+        if hasher is None:
+            logger.warning("Release published no usable digest; falling back to a size check only.")
 
-            with open(out_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=65536):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if progress_cb:
-                            progress_cb(downloaded, total_bytes)
+        try:
+            with requests.get(update_info.download_url, stream=True, timeout=60.0) as r:
+                r.raise_for_status()
+                total_bytes = int(r.headers.get("content-length", update_info.asset_size or 0))
+                downloaded = 0
 
-        return out_path
+                with open(part_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=65536):
+                        if chunk:
+                            f.write(chunk)
+                            if hasher is not None:
+                                hasher.update(chunk)
+                            downloaded += len(chunk)
+                            if progress_cb:
+                                progress_cb(downloaded, total_bytes)
+
+            expected_size = update_info.asset_size or total_bytes
+            if expected_size and downloaded != expected_size:
+                raise IntegrityError(
+                    f"Update download truncated: got {downloaded} bytes, expected {expected_size}."
+                )
+
+            if hasher is not None:
+                actual_digest = hasher.hexdigest()
+                if actual_digest != expected_digest:
+                    raise IntegrityError(
+                        f"Update failed its integrity check: {hasher.name} was {actual_digest}, "
+                        f"expected {expected_digest}. Refusing to install."
+                    )
+
+            os.replace(part_path, out_path)
+            return out_path
+
+        except BaseException:
+            part_path.unlink(missing_ok=True)
+            raise
 
     @staticmethod
     def apply_update_windows(installer_path: Path, silent: bool = True) -> bool:
